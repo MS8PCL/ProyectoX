@@ -1,0 +1,15 @@
+Archive:  /tmp/fase5_export3.zip
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+      341  02-18-2026 23:33   application.json
+      333  02-18-2026 23:33   candidate.json
+      563  02-18-2026 23:33   checksums.txt
+      634  02-18-2026 23:33   README.txt
+        0  02-18-2026 23:33   documents/
+        8  02-18-2026 23:33   documents/cv-02.pdf
+        0  02-18-2026 23:33   documents/certificates/
+        9  02-18-2026 23:33   documents/certificates/fase5_cert_ij5kb72cis.pdf
+        9  02-18-2026 23:33   documents/certificates/fase5_cert_xuhoo2qbdu.pdf
+        8  02-18-2026 23:33   documents/cv.pdf
+---------                     -------
+     1905                     10 files

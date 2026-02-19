@@ -1,0 +1,12 @@
+[12:50:38] 1) health
+[12:50:39] 2) ensure PocketBase superuser + schema
+[12:50:39] 3) auth cookie sid (register -> /me)
+[12:50:40] 4) negative auth: wrong password must be 401 (not 500)
+[12:50:40] 5) complete profiles (onboarding gate)
+[12:50:40] 5) listings feed (empty ok)
+[12:50:40] 6) create listing (company) + apply (worker)
+[12:50:41] 7) state endpoints (cache path)
+[12:50:41] OK smoke passed
+[12:50:41] Artifacts:
+[12:50:41] - bootstrap log: /tmp/px_bootstrap.log
+[12:50:41] - curl headers: /tmp/px_headers.txt

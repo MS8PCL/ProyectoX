@@ -1,0 +1,14 @@
+UI network evidence (FASE 4)
+
+Route: /interno/altas (alias /enterprise/outbox)
+Endpoint consumed by UI: GET /api/enterprise/outbox?status=<optional>
+
+Observed (server-side reproduction with authenticated RRHH session cookie):
+- Request: GET http://localhost:8787/api/enterprise/outbox?status=pending
+- Status: 200
+- items.length: 14
+- contains id mddgplektptnv5m: true
+
+Evidence file: docs/evidence/fase-4-outbox-endpoint-20260218-190800.txt
+
+Note: If UI previously showed empty, the likely cause is an unauthenticated UI session (401) or status filter set to a non-pending value.

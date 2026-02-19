@@ -1,0 +1,24 @@
+FASE 5 — Build check (bun run build)
+Fecha: 2026-02-19
+
+Intentos:
+- bun run build (repo root)
+- bun run build (frontend)
+
+Resultado:
+- Bun falla con:
+  "error loading current directory"
+  "An internal error occurred (CouldntReadCurrentDirectory)"
+
+Causa probable:
+- El path del workspace contiene un ':' y '\\' en el nombre del directorio (p.ej. /Users/.../C:\\Users\\Manu...)
+- Node/Vite y Bun generan specifiers tipo:
+  file:///Users/.../C:%5CUsers%5CManu%5C...
+  y Node ESM rechaza módulos con '/' o '\\' codificados (ERR_INVALID_MODULE_SPECIFIER).
+
+Workaround propuesto:
+- Mover/clonar el repo a un path sin ':' ni '\\' en el nombre del directorio, y ejecutar ahí:
+  bun run build
+
+Nota:
+- El stack docker (web/api/proxy) sí builda correctamente en este entorno.

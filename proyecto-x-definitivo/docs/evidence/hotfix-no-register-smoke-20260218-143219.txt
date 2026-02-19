@@ -1,0 +1,14 @@
+[14:31:32] 1) health
+[14:31:32] 2) ensure PocketBase superuser + schema
+[14:31:33] 3) public registration must be disabled (410)
+[14:31:33] 4) create internal user (RRHH) via PocketBase admin + login cookie
+[14:31:33] 5) departments endpoint (active=1)
+[14:31:33] 6) outbox list (may be empty)
+[14:31:33] 7) state endpoints (cache path)
+[14:31:34] 8) negative auth: wrong password must be 401 (not 500)
+[14:31:34] OK smoke passed
+[14:31:34] Artifacts:
+[14:31:34] - bootstrap log: /tmp/px_bootstrap.log
+[14:31:34] - bootstrap outbox log: /tmp/px_bootstrap_outbox.log
+[14:31:34] - bootstrap departments log: /tmp/px_bootstrap_departments.log
+[14:31:34] - curl headers: /tmp/px_headers.txt

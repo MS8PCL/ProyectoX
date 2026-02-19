@@ -1,0 +1,15 @@
+FASE5 PB delete check
+applicationId=ej47cshm6qpd8lw
+
+after DELETE /company/applications/:id
+applications/ej47cshm6qpd8lw -> HTTP 404
+profile_imports filter applicationId -> {"items":[],"page":1,"perPage":50,"totalItems":0,"totalPages":0}
+apply_tokens filter applicationId -> {"items":[],"page":1,"perPage":50,"totalItems":0,"totalPages":0}
+
+public apply once:
+{"ok":true,"message":"Solicitud enviada correctamente"}
+http_code=200
+
+public apply twice (should 409):
+{"error":"token_used","message":"Este link ya fue usado."}
+http_code=409

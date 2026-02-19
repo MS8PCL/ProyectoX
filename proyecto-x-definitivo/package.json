@@ -1,0 +1,12 @@
+{
+  "name": "proyecto-x",
+  "private": true,
+  "scripts": {
+    "build": "bun --cwd frontend run build",
+    "dev": "npm run dev -w @proyecto-x/frontend",
+    "dev:api": "npm run dev -w @proyecto-x/backend",
+    "install:all": "npm install",
+    "docker:up": "docker compose -f infra/docker-compose.yml up -d",
+    "docker:down": "docker compose -f infra/docker-compose.yml down"
+  }
+}

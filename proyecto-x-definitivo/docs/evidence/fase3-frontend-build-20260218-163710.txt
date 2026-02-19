@@ -1,0 +1,6 @@
+build ok at 20260218-163710
+total 24
+drwxr-xr-x   6 manuserrano  staff   192 18 feb 16:37 .
+drwxr-xr-x  13 manuserrano  staff   416 18 feb 16:37 ..
+drwxr-xr-x  36 manuserrano  staff  1152 18 feb 16:37 assets
+-rw-r--r--   1 manuserrano  staff   582 18 feb 16:37 demo-cv.pdf

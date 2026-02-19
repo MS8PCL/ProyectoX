@@ -1,0 +1,12 @@
+HTTP/1.1 409 Conflict
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Headers: content-type
+Access-Control-Allow-Methods: GET,POST,PUT,DELETE,OPTIONS
+Access-Control-Allow-Origin: http://localhost:8787
+Content-Length: 58
+Content-Type: application/json
+Date: Wed, 18 Feb 2026 22:34:10 GMT
+Via: 1.1 Caddy
+X-Correlation-Id: corr_2885532c-4ff1-4604-9703-d490ddfa6bdf
+
+{"error":"token_used","message":"Este link ya fue usado."}

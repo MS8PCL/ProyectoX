@@ -1,0 +1,17 @@
+{
+  "name": "@proyecto-x/backend",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node --watch --env-file=.env.local src/index.cjs",
+    "start": "node --env-file=.env.local src/index.cjs",
+    "lint": "echo \"(todo)\""
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "hono": "^4.6.15",
+    "ioredis": "^5.7.0",
+    "zod": "^3.23.8"
+  }
+}
+

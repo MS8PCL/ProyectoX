@@ -1,0 +1,76 @@
+services:
+  keydb:
+    image: eqalpha/keydb:latest
+    container_name: proyecto-x-keydb
+    ports:
+      - "6379:6379"
+    command: ["keydb-server", "/etc/keydb/keydb.conf", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "keydb-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  pocketbase:
+    image: ghcr.io/muchobien/pocketbase:latest
+    container_name: proyecto-x-pocketbase
+    ports:
+      - "8090:8090"
+    environment:
+      # Allow larger file uploads (CV PDFs, etc.)
+      # Supported by several PocketBase container images.
+      - PB_MAX_UPLOAD_SIZE=50MB
+    volumes:
+      # Use a named volume to avoid host path issues with this workspace's Windows-like path.
+      - pb_data:/pb_data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/_/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: proyecto-x-api
+    depends_on:
+      keydb:
+        condition: service_healthy
+      pocketbase:
+        condition: service_healthy
+    # no host port here; Caddy exposes 8787
+    expose:
+      - "8787"
+    env_file:
+      - ./.env.api.local
+    environment:
+      PORT: "8787"
+      WEB_ORIGIN: "http://localhost:8787"
+      COOKIE_SECURE: "false"
+      POCKETBASE_URL: "http://pocketbase:8090"
+      KEYDB_URL: "redis://keydb:6379"
+      SESSION_TTL_SECONDS: "86400"
+      RATE_LIMIT_PER_MINUTE: "100"
+
+  web:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: proyecto-x-web
+    expose:
+      - "5173"
+
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
+    container_name: proyecto-x-proxy
+    depends_on:
+      - api
+      - web
+    ports:
+      - "8787:8787"
+
+volumes:
+  pb_data:

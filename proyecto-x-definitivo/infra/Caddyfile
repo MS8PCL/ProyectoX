@@ -1,0 +1,13 @@
+:8787 {
+  encode gzip
+
+  # API (strip /api prefix)
+  handle_path /api/* {
+    reverse_proxy api:8787
+  }
+
+  # Everything else goes to Vite dev server (HMR websocket supported)
+  handle {
+    reverse_proxy web:5173
+  }
+}

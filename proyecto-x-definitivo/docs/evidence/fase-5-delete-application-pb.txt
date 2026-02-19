@@ -1,0 +1,9 @@
+FASE 5 — Delete hard candidatura (application) — PocketBase check
+Fecha: 2026-02-19
+applicationId: 5iildtoeufjmxx4
+
+applications/5iildtoeufjmxx4 -> HTTP 404
+body: {"data":{},"message":"The requested resource wasn't found.","status":404}
+
+profile_imports filter applicationId="5iildtoeufjmxx4":
+{"items":[],"page":1,"perPage":50,"totalItems":0,"totalPages":0}

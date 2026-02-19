@@ -1,0 +1,62 @@
+# fase-4 frontend build check
+timestamp=20260218-184203
+workdir=/tmp/proyecto-x-definitivo-buildcheck/frontend
+--- bun install
+bun install v1.3.8 (b64edcb4)
+Resolving dependencies
+Resolved, downloaded and extracted [65]
+Saved lockfile
+
++ @vitejs/plugin-vue@6.0.4
++ vite@7.3.1
++ pinia@3.0.4
++ vue@3.5.28
++ vue-router@5.0.2
+
+83 packages installed [699.00ms]
+--- bun run build
+$ vite build
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 66 modules transformed.
+rendering chunks...
+[plugin vite:reporter] 
+(!) /private/tmp/proyecto-x-definitivo-buildcheck/frontend/src/lib/api.js is dynamically imported by /private/tmp/proyecto-x-definitivo-buildcheck/frontend/src/main.js but also statically imported by /private/tmp/proyecto-x-definitivo-buildcheck/frontend/src/pages/EnterpriseCatalogPage.vue, /private/tmp/proyecto-x-definitivo-buildcheck/frontend/src/pages/EnterpriseDashboardPage.vue, /private/tmp/proyecto-x-definitivo-buildcheck/frontend/src/pages/EnterpriseHireToolsPage.vue, /private/tmp/proyecto-x-definitivo-buildcheck/frontend/src/pages/EnterpriseOutboxPage.vue, /private/tmp/proyecto-x-definitivo-buildcheck/frontend/src/pages/EnterpriseRbacPage.vue, /private/tmp/proyecto-x-definitivo-buildcheck/frontend/src/pages/PipelineServerPage.vue, /private/tmp/proyecto-x-definitivo-buildcheck/frontend/src/pages/ProfilePage.vue, /private/tmp/proyecto-x-definitivo-buildcheck/frontend/src/stores/app.js, /private/tmp/proyecto-x-definitivo-buildcheck/frontend/src/stores/auth.js, dynamic import will not move module into another chunk.
+
+computing gzip size...
+dist/index.html                                     0.45 kB │ gzip:  0.29 kB
+dist/assets/ProfilePage-CCXWtmFW.css                0.12 kB │ gzip:  0.13 kB
+dist/assets/CandidateProfilePage-Ccl3f14g.css       0.15 kB │ gzip:  0.15 kB
+dist/assets/NotFoundPage-CuFU733Q.css               0.30 kB │ gzip:  0.20 kB
+dist/assets/EnterpriseDashboardPage-DwzyjA_Y.css    0.32 kB │ gzip:  0.19 kB
+dist/assets/EnterpriseRbacPage-CnLbHQmM.css         0.38 kB │ gzip:  0.22 kB
+dist/assets/ListingDetail-Qq0EB8hp.css              0.43 kB │ gzip:  0.26 kB
+dist/assets/EnterpriseOutboxPage-CdDjuuqo.css       0.50 kB │ gzip:  0.25 kB
+dist/assets/EnterpriseHireToolsPage-C_RDOMh3.css    0.53 kB │ gzip:  0.29 kB
+dist/assets/EnterpriseCatalogPage-h4k2x1lI.css      0.59 kB │ gzip:  0.28 kB
+dist/assets/HomePage-XBB-fbvx.css                   0.87 kB │ gzip:  0.37 kB
+dist/assets/LoginPage-CezeSncd.css                  1.11 kB │ gzip:  0.45 kB
+dist/assets/index-CpGHXe93.css                      1.75 kB │ gzip:  0.77 kB
+dist/assets/SearchPage-BnwfM0RM.css                 2.10 kB │ gzip:  0.63 kB
+dist/assets/AppLayout-B4pqIEc_.css                  2.25 kB │ gzip:  0.71 kB
+dist/assets/PipelineServerPage-Ccd6Vw7I.css         4.34 kB │ gzip:  1.27 kB
+dist/assets/NotFoundPage-B3cykslc.js                0.45 kB │ gzip:  0.33 kB
+dist/assets/LoginPage-DRfQIQVK.js                   1.48 kB │ gzip:  0.81 kB
+dist/assets/FavoritesPage-BDThoaj5.js               1.69 kB │ gzip:  0.88 kB
+dist/assets/EnterpriseRbacPage-DHkKNetb.js          1.81 kB │ gzip:  0.93 kB
+dist/assets/ApplicationsPage-dPLwt8I2.js            1.88 kB │ gzip:  1.00 kB
+dist/assets/EnterpriseDashboardPage-B8PNTvND.js     1.88 kB │ gzip:  1.01 kB
+dist/assets/EnterpriseCatalogPage-Cea8M6xm.js       2.16 kB │ gzip:  1.08 kB
+dist/assets/CandidateProfilePage-BJscZPE4.js        2.27 kB │ gzip:  1.15 kB
+dist/assets/ListingDetail-BH-FIIqs.js               2.29 kB │ gzip:  1.14 kB
+dist/assets/PublishPage-B6W_M419.js                 2.91 kB │ gzip:  1.16 kB
+dist/assets/EnterpriseOutboxPage-m0ItRMh2.js        3.05 kB │ gzip:  1.33 kB
+dist/assets/EnterpriseHireToolsPage-CBn6w5So.js     4.04 kB │ gzip:  1.46 kB
+dist/assets/HomePage-CWDuIXHj.js                    4.85 kB │ gzip:  1.62 kB
+dist/assets/AppLayout-B5r2qHlG.js                   4.86 kB │ gzip:  1.89 kB
+dist/assets/SearchPage-DhJiT5hS.js                  7.03 kB │ gzip:  2.60 kB
+dist/assets/ProfilePage-fCSuBdyo.js                 9.41 kB │ gzip:  3.35 kB
+dist/assets/app-BzKWw8KD.js                        15.36 kB │ gzip:  4.11 kB
+dist/assets/PipelineServerPage-B0lpZ08k.js         16.11 kB │ gzip:  5.48 kB
+dist/assets/index-56o0MEyG.js                     102.92 kB │ gzip: 39.97 kB
+✓ built in 888ms

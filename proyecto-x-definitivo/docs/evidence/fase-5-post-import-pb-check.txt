@@ -1,0 +1,27 @@
+FASE 5 — Post-import PocketBase check
+Fecha: 2026-02-19
+ListingId: whbrxe466yrvhnk
+
+applications (filter listingId):
+- 6i2jqd1ggokn9wh stage=hired candidateUserId=qg0ekp5wnoylqcs birthDate=1990-01-15 00:00:00.000Z
+- q1lu0b6xcpidfcm stage=revisar candidateUserId=xav5pcnapf1f8ow birthDate=1010-01-01 00:00:00.000Z
+- 5iildtoeufjmxx4 stage=nuevo candidateUserId=4bku70kq44zdes6 birthDate=1990-01-01 00:00:00.000Z
+- v4hweyzzzaj3slw stage=nuevo candidateUserId=tahqnj2gcfg92b2 birthDate=1992-02-02 00:00:00.000Z
+
+profile_imports (por applicationId import UI):
+- applicationId=5iildtoeufjmxx4 imports=2
+  - a8s7ogzysqwboma docType=cv file=manual_candidate_uno_02li1f2hju.pdf
+  - hl3p1pukkwvlypf docType=certificate file=certificado_demo_xvv9ipflvz.pdf
+- applicationId=v4hweyzzzaj3slw imports=2
+  - ibhu0fu017kvkqd docType=cv file=ana_lopez_martinez_s8fafgsngc.pdf
+  - 5gr3ora3czm122n docType=certificate file=certificado_demo_7vc64v83l6.pdf
+
+apply_tokens (filter jobId=listingId):
+- 1q609toe6u3ssxe applicationId=6i2jqd1ggokn9wh expiresAt=2026-02-20 08:27:35.143Z daysFromNow=0.8 usedAt= active=true
+- nzm6irenxd7r3g0 applicationId=6i2jqd1ggokn9wh expiresAt=2026-02-20 08:46:21.965Z daysFromNow=0.8 usedAt=2026-02-19 09:20:03.355Z active=false
+- uwidhqz7ngjddyi applicationId=5iildtoeufjmxx4 expiresAt=2026-03-01 12:38:51.169Z daysFromNow=10 usedAt= active=true
+
+Checks:
+- profile_imports.applicationId presente y correcto para las dos candidaturas importadas.
+- No se ven duplicados en applications para el listing en esta captura.
+- Hay tokens legacy (<7 días) creados antes del cambio; el endpoint ahora bloquea nuevas creaciones fuera de 7–30 días.

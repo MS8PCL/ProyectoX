@@ -1,0 +1,3 @@
+docker compose -f infra/docker-compose.yml up -d --build api web proxy
+curl http://localhost:8787/api/health
+{"ok":true}

@@ -227,7 +227,7 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
             var email = Required(fields, "email", 120).ToLowerInvariant();
             if (!MailAddress.TryCreate(email, out var address) || address.Address != email || email.Any(char.IsWhiteSpace) || !email.Contains('@')) throw Invalid("Email inválido.");
             var birth = Required(fields, "birthDate", 40);
-            if (!DateOnly.TryParseExact(birth, "yyyy-MM-dd", out var date)) throw Invalid("Fecha de nacimiento inválida.");
+            if (!DateOnly.TryParseExact(birth, "yyyy-MM-dd", out var date) || date > DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1))) throw Invalid("Fecha de nacimiento inválida.");
             var cover = Required(fields, "coverLetter", 5000);
             if (files.Count(x => Text(x["name"]) == "cv") != 1 || files.Any(x => Text(x["name"]) is not ("cv" or "certificates"))) throw Invalid("CV obligatorio; solo se permiten certificados adicionales.");
             MergeCandidates(data);

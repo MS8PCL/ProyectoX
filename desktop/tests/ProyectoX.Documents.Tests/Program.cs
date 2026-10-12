@@ -108,6 +108,11 @@ try
         var badBody = (JsonObject)body.DeepClone(); badBody["parts"]!.AsArray().RemoveAt(0);
         await Reject(() => api.HandleAsync(Request("/interno/listings/listing/import_candidate", badBody, beforeInvalid.Revision), default), "invalid_request");
         Check((await store.ReadAsync()).Revision == beforeInvalid.Revision, "validation never publishes partial references");
+        var unborn = new JsonObject { ["parts"] = new JsonArray(Field("firstName", "Futura"), Field("lastName", "Persona"), Field("email", "futura@example.test"),
+            Field("birthDate", DateTime.UtcNow.AddYears(1).ToString("yyyy-MM-dd")), Field("coverLetter", "Carta"),
+            new JsonObject { ["name"] = "cv", ["fileName"] = "cv.pdf", ["mime"] = "application/pdf", ["size"] = bytes.Length, ["base64"] = Convert.ToBase64String(bytes) }) };
+        await Reject(() => api.HandleAsync(Request("/interno/listings/listing/import_candidate", unborn, beforeInvalid.Revision), default), "invalid_request");
+        Check((await store.ReadAsync()).Revision == beforeInvalid.Revision, "a future birth date is rejected without writes");
         await Reject(() => api.HandleUploadAsync("uploadChunk", new JsonObject { ["uploadId"] = next["uploadId"]!.DeepClone(), ["offset"] = long.MaxValue, ["base64"] = Convert.ToBase64String(bytes), ["sha256"] = Hash(bytes) }, default), "invalid_request");
         // Inject an uncertain durable commit. Recovery must keep the published document
         // and replay its receipt rather than creating another reference or deleting it.

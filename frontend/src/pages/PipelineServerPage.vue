@@ -1466,9 +1466,7 @@ async function confirmHardDelete() {
   deleteConfirm.loading = true
   try {
     const lid = deleteConfirm.listingId
-    if (lid && Array.isArray(appsByListing[lid])) {
-      appsByListing[lid] = appsByListing[lid].filter((x) => x.id !== deleteConfirm.applicationId)
-    }
+    // Removed from the board only after the host confirms; a refusal keeps the card.
     await api(`/company/applications/${encodeURIComponent(deleteConfirm.applicationId)}`, { method: 'DELETE' })
     if (lid) await loadApplications(lid)
     if (candidateModal.open && candidateModal.applicationId === deleteConfirm.applicationId) closeCandidateModal()

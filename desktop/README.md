@@ -9,6 +9,8 @@ El EXE usa **`frontend/` original**, con su diseño, componentes, navegación, t
 - Router hash dentro de WebView2; en navegador se mantiene el modo web existente.
 - `api()` y `apiForm()` hablan con C# a través del bridge, sin HTTP ni procesos Hono/PocketBase/Redis.
 - `LegacyApi` adapta los contratos existentes a JSON compartido: ofertas, perfiles, candidaturas/etapas/notas, catálogos, métricas, altas IT, outbox manual, auditoría, notificaciones y preferencias por identidad.
+- Si el almacén no tiene departamentos ni puestos (instalación nueva sin migración), el host sirve los catálogos oficiales de `backend/src/seeds`, embebidos tal cual, y los guarda en la primera escritura. Nunca sustituye un catálogo existente.
+- Las preferencias propias (`/state`, `/settings`) no fallan porque otro usuario haya guardado algo; solo entran en conflicto con un guardado más reciente del mismo usuario.
 - `DocumentApi` admite CV/certificados, importación interna, lectura nativa y ZIP. Uploads por chunks de 256 KiB, con SHA256; 50 MiB por archivo y 64 MiB por formulario.
 - El worker PDF.js se empaqueta con la versión instalada; no requiere un CDN.
 - Se conservan colores y layout; se completaron textos faltantes que mostraban claves como `onboarding.welcome`.

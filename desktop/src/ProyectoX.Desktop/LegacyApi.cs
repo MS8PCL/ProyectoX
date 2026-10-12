@@ -274,8 +274,10 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
                 {
                     var row = Find(data, "applications", aid);
                     if (Rows(data, "hire_profiles").Any(x => Text(x["applicationId"]) == aid)) throw Error("reference_conflict", "La candidatura tiene un alta asociada.");
-                    if (Rows(data, "profile_imports").Any(x => Text(x["applicationId"]) == aid))
-                        throw Error("document_dispatch_required", "DocumentApi debe coordinar la eliminación de los documentos antes de borrar la candidatura.");
+                    // Like the web backend, the application's own imports go with it. Their document
+                    // bytes stay on disk: published files are never deleted (see DocumentApi).
+                    var imports = Array(data, "profile_imports");
+                    foreach (var item in imports.OfType<JsonObject>().Where(x => Text(x["applicationId"]) == aid).ToArray()) imports.Remove(item);
                     Array(data, "applications").Remove(row);
                 }
                 return Ok();

@@ -13,6 +13,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Own profile and onboarding completeness", Profile),
     ("PocketBase candidate profile IDs, aliases and pipeline stages", Imported),
     ("Candidates/applications CRUD and reference conflicts", Applications),
+    ("Deleting an imported application removes its own imports", ImportedApplicationDelete),
     ("Atomic hire, outbox export and completion", Hire),
     ("Standalone hire-tools frontend shape", StandaloneHire),
     ("Catalog filters, audit pagination and real metrics", Reporting),
@@ -209,6 +210,19 @@ static async Task Applications()
     await f.Api.HandleAsync(delete, default); await f.Api.HandleAsync(delete, default);
     await Write(f, "/candidates/" + c, "DELETE", new()); await Write(f, "/listings/" + l, "DELETE", new());
     Check((await f.Store.ReadAsync()).Data["applications"]!.AsArray().Count == 0);
+}
+static async Task ImportedApplicationDelete()
+{
+    using var f = new Fixture(); var (_, c, a) = await Setup(f);
+    var seeded = await f.Store.ReadAsync();
+    seeded.Data["profile_imports"] = new JsonArray(
+        new JsonObject { ["id"] = "imp-app", ["applicationId"] = a, ["userId"] = c, ["docType"] = "cv", ["documentId"] = "00000000-0000-0000-0000-000000000001" },
+        new JsonObject { ["id"] = "imp-own", ["userId"] = c, ["docType"] = "cv" });
+    await f.Store.CommitAsync(seeded.Revision, seeded.Data, "test");
+    await Write(f, "/company/applications/" + a, "DELETE", new());
+    var data = (await f.Store.ReadAsync()).Data;
+    Check(data["applications"]!.AsArray().Count == 0);
+    Check(data["profile_imports"]!.AsArray().Select(x => Str(x!["id"])).SequenceEqual(["imp-own"]));
 }
 static async Task Hire()
 {

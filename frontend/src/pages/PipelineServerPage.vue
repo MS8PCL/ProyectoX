@@ -295,7 +295,8 @@
         Candidatura — {{ fullName(candidateModal.profile) || candidateModal.profile?.email || candidateModal.candidateUserId || '—' }}
       </template>
 
-      <div class="row justify-end items-center gap-8 mb-8">
+      <!-- Public application links need the web service; desktop imports internally instead. -->
+      <div v-if="!isDesktop()" class="row justify-end items-center gap-8 mb-8">
         <code class="muted text-sm">
           <span v-if="candidateModal.loadingTokens">link: cargando…</span>
           <span v-else-if="latestApplyToken">link: {{ tokenStatus(latestApplyToken) }} · exp={{ fmtDate(latestApplyToken.expiresAt) || '—' }}</span>
@@ -321,7 +322,7 @@
             <div class="font-bold">{{ t('pipeline.data') }}</div>
             <div class="muted text-sm mt-4">{{ candidateModal.profile?.firstName || '—' }} {{ candidateModal.profile?.lastName || '' }}</div>
             <div class="muted text-sm mt-4">{{ candidateModal.profile?.email || '—' }}</div>
-            <div class="muted text-sm mt-4">birthDate={{ fmtDate(candidateModal.application?.birthDate) || '—' }}</div>
+            <div class="muted text-sm mt-4">{{ t('pipeline.fieldBirthDate') }}: {{ fmtDate(candidateModal.application?.birthDate) || '—' }}</div>
             <div class="muted text-sm mt-8">{{ t('pipeline.fieldCoverLetter') }}</div>
             <div style="white-space: pre-wrap">{{ candidateModal.application?.coverLetter || '—' }}</div>
           </div>
@@ -1334,6 +1335,7 @@ function tokenStatus(t) {
 }
 
 async function loadApplyTokens(applicationId) {
+  if (isDesktop()) return
   candidateModal.loadingTokens = true
   try {
     const res = await api(`/interno/applications/${encodeURIComponent(applicationId)}/apply_tokens`)
@@ -1684,17 +1686,23 @@ function notesPreview(notes) {
   return one.length > 60 ? one.slice(0, 60) + '…' : one
 }
 
-let notesTimer = null
+// One debounce per application: a shared timer dropped card A's note when card B was edited.
+const notesTimers = new Map()
 function setNotes(appId, val) {
   const listingId = openListingId.value
   if (!listingId) return
   const list = appsByListing[listingId] || []
   const row = list.find((x) => x.id === appId)
   if (row) row.notes = val
-  clearTimeout(notesTimer)
-  notesTimer = setTimeout(async () => {
-    await api(`/company/applications/${encodeURIComponent(appId)}`, { method: 'PATCH', body: JSON.stringify({ notes: val }) })
-  }, 400)
+  clearTimeout(notesTimers.get(appId))
+  notesTimers.set(appId, setTimeout(async () => {
+    notesTimers.delete(appId)
+    try {
+      await api(`/company/applications/${encodeURIComponent(appId)}`, { method: 'PATCH', body: JSON.stringify({ notes: val }) })
+    } catch (e) {
+      useAppStore().toast = { kind: 'err', text: `No se pudieron guardar las notas: ${e?.message || e}` }
+    }
+  }, 400))
 }
 
 onMounted(async () => {

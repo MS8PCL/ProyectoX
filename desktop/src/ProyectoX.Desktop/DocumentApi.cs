@@ -206,6 +206,7 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
         string userId = identity.Id;
         string? applicationId = null;
         JsonObject? application = null;
+        JsonObject? existingApplication = null;
         if (path != "/profile/imports/file")
         {
             var listing = Find(data, "listings", path.Split('/')[3]);
@@ -228,10 +229,17 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
             }
             candidate["firstName"] = first; candidate["lastName"] = last; candidate["fullName"] = first + " " + last; candidate["name"] = first + " " + last; candidate["email"] = email; candidate["updated"] = Now();
             userId = Required(candidate, "id", 256);
-            application = NewRecord(); applicationId = Text(application["id"]);
-            application["listingId"] = Text(listing["id"]); application["companyUserId"] = owner;
-            application["candidateUserId"] = userId; application["candidateId"] = userId;
-            application["stage"] = "nuevo"; application["notes"] = ""; application["birthDate"] = date.ToString("yyyy-MM-dd"); application["coverLetter"] = cover;
+            // Re-importing someone already in this listing attaches the documents to that
+            // application, as POST /applications does, instead of duplicating the pipeline card.
+            existingApplication = Rows(data, "applications").OfType<JsonObject>()
+                .FirstOrDefault(x => (Text(x["candidateUserId"]) ?? Text(x["candidateId"])) == userId && Text(x["listingId"]) == Text(listing["id"]));
+            application = existingApplication ?? NewRecord(); applicationId = Text(application["id"]);
+            if (existingApplication is null)
+            {
+                application["listingId"] = Text(listing["id"]); application["companyUserId"] = owner;
+                application["candidateUserId"] = userId; application["candidateId"] = userId;
+                application["stage"] = "nuevo"; application["notes"] = ""; application["birthDate"] = date.ToString("yyyy-MM-dd"); application["coverLetter"] = cover;
+            }
         }
         else
         {
@@ -262,9 +270,9 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
         }
         if (application is not null)
         {
-            Rows(data, "applications").Add(application);
+            if (existingApplication is null) Rows(data, "applications").Add(application);
             if (data.ContainsKey("candidate_profiles")) data["candidate_profiles"] = Rows(data, "candidates").DeepClone();
-            return new JsonObject { ["ok"] = true, ["applicationId"] = applicationId, ["candidateProfileId"] = userId };
+            return new JsonObject { ["ok"] = true, ["applicationId"] = applicationId, ["candidateProfileId"] = userId, ["already"] = existingApplication is not null };
         }
         return new JsonObject { ["ok"] = true, ["item"] = imported!.DeepClone() };
     }

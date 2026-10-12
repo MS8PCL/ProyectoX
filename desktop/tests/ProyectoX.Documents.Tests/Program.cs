@@ -141,6 +141,14 @@ try
     var missing = new DocumentApi(store, missingRoot, false, staff);
     await Reject(() => missing.PrepareExportAsync(docPath, default), "store_unavailable");
     Check(!Directory.Exists(missingRoot), "never create missing root");
+    var inlineCv = new JsonObject { ["name"] = "cv", ["fileName"] = "cv.pdf", ["mime"] = "application/pdf", ["size"] = bytes.Length, ["base64"] = Convert.ToBase64String(bytes) };
+    var again = new JsonObject { ["parts"] = new JsonArray(
+        Field("firstName", "Test"), Field("lastName", "Person"), Field("email", "PERSON@example.test"),
+        Field("birthDate", "1990-01-02"), Field("coverLetter", "Letter"), inlineCv) };
+    var reimport = await api.HandleAsync(Request("/interno/listings/listing/import_candidate", again, (await store.ReadAsync()).Revision), default);
+    Check(reimport["applicationId"]!.GetValue<string>() == appId && reimport["already"]!.GetValue<bool>(), "re-import reuses the application");
+    Check((await store.ReadAsync()).Data["applications"]!.AsArray().Count == 1, "no duplicate application");
+    Check((await api.HandleAsync(new JsonObject { ["path"] = $"/interno/applications/{appId}/documents" }, default))["items"]!.AsArray().Count == 2, "new CV attached to it");
     Console.WriteLine("PASS: document contracts, temp store, uploads, replay, permissions, export and safety");
         await ImportedDocumentsTests.RunAsync(root);
 }

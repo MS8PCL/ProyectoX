@@ -107,7 +107,7 @@ onMounted(async () => {
     const raw = await apiAllPages('/enterprise/audit-log')
     serverEntries.value = raw.map((e) => ({
       id: e.id || e.audit_id || `${Date.now()}_${Math.random()}`,
-      timestamp: e.timestamp || e.created_at || e.createdAt || new Date().toISOString(),
+      timestamp: e.timestamp || e.at || e.created_at || e.createdAt || new Date().toISOString(),
       user: e.user || e.email || e.actor || t('audit.system'),
       action: e.action || e.event || 'acción',
       icon: e.icon,

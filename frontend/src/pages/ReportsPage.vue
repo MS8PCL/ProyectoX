@@ -364,10 +364,10 @@ async function loadAuditLog() {
     const raw = await apiAllPages('/enterprise/audit-log')
     auditLog.value = raw.map((e) => ({
       id: e.id || e.audit_id || `${Date.now()}_${Math.random()}`,
-      fecha: new Date(e.timestamp || e.created_at || e.createdAt || Date.now()).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      fecha: new Date(e.timestamp || e.at || e.created_at || e.createdAt || Date.now()).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
       accion: e.action || e.event || 'acción',
       detalle: e.details || e.description || e.detail || '—',
-      ts: e.timestamp || e.created_at || e.createdAt || new Date().toISOString(),
+      ts: e.timestamp || e.at || e.created_at || e.createdAt || new Date().toISOString(),
     }))
     return
   } catch (e) {

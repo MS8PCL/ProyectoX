@@ -483,6 +483,7 @@ const es = {
     saveServerError: "No se pudo guardar el perfil en el servidor",
     saved: "Perfil guardado",
     copied: "Perfil copiado",
+    copyError: "No se pudo copiar el perfil",
   },
   perfiles: { admin: "Admin", rrhh: "RRHH", it: "IT" },
 };
@@ -971,6 +972,7 @@ const en = {
     saveServerError: "Could not save the profile on the server",
     saved: "Profile saved",
     copied: "Profile copied",
+    copyError: "The profile could not be copied",
   },
   perfiles: { admin: "Admin", rrhh: "HR", it: "IT" },
 };

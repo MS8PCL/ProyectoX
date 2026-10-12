@@ -554,7 +554,13 @@ async function save() {
 
 async function copy() {
   const text = JSON.stringify(app.state.profile[app.role], null, 2)
-  await navigator.clipboard.writeText(text)
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch (e) {
+    // A denied clipboard was an unhandled rejection with no message.
+    app.toast = { kind: 'err', text: `${t('profile.copyError')}: ${e?.message || e}` }
+    return
+  }
   app.toast = { kind: 'ok', text: t('profile.copied') }
 }
 </script>

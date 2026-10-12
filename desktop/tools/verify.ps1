@@ -8,6 +8,7 @@ try {
 & dotnet run --project (Join-Path $root 'tests\ProyectoX.Storage.Tests\ProyectoX.Storage.Tests.csproj') -c Release
 if ($LASTEXITCODE -ne 0) { throw 'Han fallado las pruebas de persistencia.' }
 & (Join-Path $PSScriptRoot 'build.ps1') -Configuration Release
+& (Join-Path $root 'tests\test_windows_build.ps1')
 $assembly = Join-Path $root 'src\ProyectoX.Desktop\bin\Release\net8.0-windows\ProyectoX.Desktop.dll'
 $dist = Join-Path $root 'frontend-dist'
 & dotnet run --project (Join-Path $root 'tests\ProyectoX.Application.Tests\ProyectoX.Application.Tests.csproj') -c Release -- $assembly $dist

@@ -353,6 +353,11 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
         if (standalone)
         {
             Required(body, "firstName", 120); Required(body, "lastName", 120); Email(body, "email");
+            // One open IT request per person: a second one while the first is not completed would
+            // be provisioned twice. A completed request does not block a later rehire.
+            if (!replay && Rows(data, "integration_outbox").Any(x => Text(x["kind"]) == "alta_it" && Text(x["status"]) != "completed" &&
+                    string.Equals(Text(x["export_blob"]?["candidate"]?["email"]), Text(body["email"]), StringComparison.OrdinalIgnoreCase)))
+                throw Error("reference_conflict", "Ya hay una solicitud de alta IT sin completar para este email.");
             candidate = Candidates(data).FirstOrDefault(x => string.Equals(Text(x["email"]), Text(body["email"]), StringComparison.OrdinalIgnoreCase))
                 ?? (replay ? Candidate(data, NewId(op, "candidate")) : Add(data, "candidates", op, "candidate"));
             if (!replay)

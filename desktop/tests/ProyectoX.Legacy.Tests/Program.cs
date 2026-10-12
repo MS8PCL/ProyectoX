@@ -324,6 +324,14 @@ static async Task StandaloneHire()
     Check(Str(data["candidates"]![0]!["fullName"]) == "Grace Hopper");
         await Write(f, "/candidates/" + Str(data["candidates"]![0]!["id"]), "PATCH", Obj("""{"firstName":"Amazing Grace"}"""));
         Check(Str((await Get(f, "/candidates"))["items"]![0]!["fullName"]) == "Amazing Grace Hopper");
+    // A second request for the same person while the first is pending would be provisioned twice.
+    var again = Obj("""{"firstName":"Grace","lastName":"Hopper","email":"GRACE@example.org","departmentId":"dep-pb","jobTitleId":"job-pb","costCenter":"IT","startDate":"2026-11-02"}""");
+    await Code("reference_conflict", () => Write(f, "/enterprise/hire-profiles", "POST", again));
+    var outbox = (await Get(f, "/enterprise/outbox"))["items"]!.AsArray();
+    Check(outbox.Count == 1, "no duplicate pending request");
+    await Write(f, "/enterprise/outbox/" + Str(outbox[0]!["id"]) + "/complete", "POST", new());
+    var rehire = await Write(f, "/enterprise/hire-profiles", "POST", again);
+    Check(rehire["created"]!.GetValue<bool>() && (await Get(f, "/enterprise/outbox"))["items"]!.AsArray().Count == 2, "after completion a new onboarding is allowed");
 }
 static async Task Reporting()
 {

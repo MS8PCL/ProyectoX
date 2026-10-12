@@ -7,6 +7,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Empty store reads without seeds", Empty),
     ("Listing CRUD, normalized paths, object/string bodies", Listings),
     ("Receipts, canonical fingerprints, stale retry, UUID collision", Receipts),
+    ("Only the most recent receipts are kept", ReceiptTrim),
     ("Revision races and durable uncertain outcomes", Concurrency),
     ("Stale edits apply only to records unchanged since the caller's revision", PerRecordConcurrency),
     ("Windows identity, staff ACL, readOnly and cancellation", Permissions),
@@ -125,6 +126,19 @@ static async Task Receipts()
         var afterDeletion = await f.Api.HandleAsync(reorder, default);
         Check(afterDeletion["ok"]!.GetValue<bool>() && afterDeletion["item"] is null);
         Check(Rev(afterDeletion) == 2 && (await f.Store.ReadAsync()).Data["listings"]!.AsArray().Count == 0);
+}
+static async Task ReceiptTrim()
+{
+    using var f = new Fixture();
+    var seeded = await f.Store.ReadAsync();
+    var receipts = new JsonObject();
+    for (var i = 0; i < ProyectoX.Desktop.Receipts.Max; i++) receipts[Guid.NewGuid().ToString("D")] = new string('A', 64);
+    var oldest = receipts.First().Key;
+    seeded.Data["_operations"] = receipts;
+    await f.Store.CommitAsync(seeded.Revision, seeded.Data, "test");
+    var r = await Write(f, "/listings", "POST", Listing());
+    var kept = (await f.Store.ReadAsync()).Data["_operations"]!.AsObject();
+    Check(kept.Count == ProyectoX.Desktop.Receipts.Max && !kept.ContainsKey(oldest) && r["__desktop"]!["appliedOperationIds"]!.AsArray().Count == ProyectoX.Desktop.Receipts.Max);
 }
 static async Task Concurrency()
 {

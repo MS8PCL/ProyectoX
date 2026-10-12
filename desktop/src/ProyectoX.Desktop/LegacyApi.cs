@@ -110,6 +110,7 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
             ["entity"] = AuditRoute(path), ["details"] = method + " " + AuditRoute(path), ["correlationId"] = operationId
         });
         ((JsonObject)next["_operations"]!)[operationId] = fingerprint;
+        Receipts.Trim(next);
         try
         {
             var committed = await store.CommitAsync(revision, next, identity.Id, token);
@@ -904,4 +905,25 @@ internal static class EntityRevisions
 
     /// <summary>For writers that do not stamp: the record falls back to the global revision.</summary>
     internal static void Invalidate(JsonObject data, string collection, string id) => (data[Key] as JsonObject)?.Remove(collection + "/" + id);
+}
+
+/// <summary>
+/// Receipts only let a retry of an uncertain write resolve to the original commit; the renderer
+/// forgets its pending operations when it closes. Unbounded, they grew state.json on every write
+/// and were all sent back in every response, so only the most recent ones are kept.
+/// </summary>
+internal static class Receipts
+{
+    internal const int Max = 2000;
+
+    internal static void Trim(JsonObject data)
+    {
+        if (data["_operations"] is not JsonObject receipts || receipts.Count <= Max) return;
+        var results = data["_documentResults"] as JsonObject;
+        foreach (var oldest in receipts.Take(receipts.Count - Max).Select(receipt => receipt.Key).ToArray())
+        {
+            receipts.Remove(oldest);
+            results?.Remove(oldest);
+        }
+    }
 }

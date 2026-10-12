@@ -144,6 +144,7 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
             EntityRevisions.Stamp(data, EntityRevisions.Touched(rowsBefore, data), revision + 1);
             operations[op] = fingerprint;
             results[op] = result.DeepClone();
+            Receipts.Trim(data);
             Rows(data, "audit_log").Add(new JsonObject { ["id"] = Guid.NewGuid().ToString("D"), ["at"] = Now(), ["action"] = method + " " + path, ["actorUserId"] = identity.Id, ["correlationId"] = op });
             StoreSnapshot committed;
             try { committed = await store.CommitAsync(revision, data, identity.Id, token); }

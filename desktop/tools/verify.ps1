@@ -2,7 +2,7 @@
 $root = Split-Path -Parent $PSScriptRoot
 Push-Location (Join-Path (Split-Path -Parent $root) 'frontend')
 try {
-    & node --test src/lib/desktop.test.js src/lib/desktopStartup.test.js src/lib/desktopIdempotency.test.js src/lib/desktopMultipart.test.js src/lib/storage.desktop.test.js src/lib/i18n.test.js
+    & node --test src/lib/desktop.test.js src/lib/desktopStartup.test.js src/lib/desktopIdempotency.test.js src/lib/desktopMultipart.test.js src/lib/storage.desktop.test.js src/lib/i18n.test.js src/lib/listingKinds.test.js
     if ($LASTEXITCODE -ne 0) { throw 'Han fallado las pruebas JavaScript.' }
 } finally { Pop-Location }
 & dotnet run --project (Join-Path $root 'tests\ProyectoX.Storage.Tests\ProyectoX.Storage.Tests.csproj') -c Release

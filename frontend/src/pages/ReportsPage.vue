@@ -170,6 +170,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { t } from '../lib/i18n.js'
 import { api, apiAllPages } from '../lib/api.js'
+import { isPipelineListing } from '../lib/listingKinds.js'
 import { useAuthStore } from '../stores/auth.js'
 import { downloadCsv } from '../lib/storage.js'
 import { FileText, FileSpreadsheet, Download, ClipboardList } from 'lucide-vue-next'
@@ -316,7 +317,7 @@ function exportMetrics() {
 async function loadListings() {
   try {
     const res = await api('/listings')
-    listings.value = (res.items || []).filter((l) => l.kind === 'empleo')
+    listings.value = (res.items || []).filter(isPipelineListing)
   } catch {
     listings.value = []
   }

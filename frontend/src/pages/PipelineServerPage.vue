@@ -620,6 +620,7 @@ import { api, apiForm, desktopRequest, isDesktop } from '../lib/api.js'
 import { t } from '../lib/i18n.js'
 import { useAuthStore } from '../stores/auth.js'
 import { useAppStore } from '../stores/app.js'
+import { isPipelineListing } from '../lib/listingKinds.js'
 import ModalShell from '../components/ModalShell.vue'
 import ComboBox from '../components/ComboBox.vue'
 import { ChevronDown, ChevronUp, Trash2, Upload, Download, Plus, X, GripVertical, Mail, Filter } from 'lucide-vue-next'
@@ -1174,7 +1175,7 @@ async function loadListings() {
   listings.value = res.items || []
 }
 
-const companyListings = computed(() => (listings.value || []).filter((l) => l.kind === 'empleo'))
+const companyListings = computed(() => (listings.value || []).filter(isPipelineListing))
 
 function pickInitialOpen() {
   const q = route.query?.listingId

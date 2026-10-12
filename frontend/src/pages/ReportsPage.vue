@@ -232,7 +232,8 @@ const pipelineData = computed(() => {
       rows.push({
         puesto: listing?.title || lid,
         empresa: listing?.company || '—',
-        etapa: a.stage || 'nuevo',
+        // The host keeps the original "hired" stage id; every other stage is already Spanish.
+        etapa: a.stage === 'hired' ? t('pipeline.hired') : a.stage || 'nuevo',
         candidato: fullNameFromProfile(p) || p?.email || cid || '—',
         email: p?.email || '—',
         createdAt: a.createdAt || a.created || '',

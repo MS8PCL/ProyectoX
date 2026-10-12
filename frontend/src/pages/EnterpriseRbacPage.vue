@@ -21,7 +21,6 @@
     <!-- Empty state -->
     <div v-if="!loading && !error && rules.length === 0" class="card" style="text-align: center; padding: 40px">
       <p class="muted" style="margin-bottom: 16px">{{ t('rbac.empty') }}</p>
-      <RouterLink class="btn btn-primary btn-sm" to="/enterprise/rbac">{{ t('rbac.createFirst') }}</RouterLink>
     </div>
 
     <!-- Rules list -->

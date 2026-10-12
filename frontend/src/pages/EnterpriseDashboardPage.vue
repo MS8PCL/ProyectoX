@@ -81,7 +81,8 @@
       <div class="timeline-list">
         <div v-for="(item, i) in recentActivity" :key="i" class="timeline-item">
           <div class="timeline-body">
-            <div class="timeline-text">{{ item.description || item.action || 'Evento' }}</div>
+            <div class="timeline-text">{{ [item.name, item.description || item.action || 'Evento'].filter(Boolean).join(' — ') }}</div>
+            <div v-if="item.detail" class="timeline-detail text-xs muted">{{ item.detail }}</div>
             <div class="timeline-detail text-xs muted">{{ item.timestamp ? fmtDate(item.timestamp) : '' }}</div>
           </div>
         </div>

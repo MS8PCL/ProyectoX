@@ -306,6 +306,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, apiForm, desktopRequest, isDesktop } from '../lib/api.js'
 import { useAppStore } from '../stores/app.js'
+import { useAuthStore } from '../stores/auth.js'
 import { t } from '../lib/i18n.js'
 import { User, Copy, Upload, Link as LinkIcon, Globe, Lock, Save, FileSearch, ChevronDown, ChevronRight, Loader, Check, Plus, Phone, Mail } from 'lucide-vue-next'
 import { parseDocument, extractSkills, extractName, extractEmail, extractPhone } from '../lib/documentParser.js'
@@ -322,13 +323,18 @@ const p = computed(() => app.state?.profile?.[app.role] || null)
 
 const form = reactive({ name: '', title: '', location: '', skills: '', about: '', public: true })
 
+// Staff see the "empresa" layout, but both hosts store a company profile only for the
+// company role; rrhh/it/admin keep a personal one (fullName/title/location).
+const auth = useAuthStore()
+const serverCompanyProfile = () => auth.user?.role === 'company'
+
 async function loadServerProfile() {
   try {
     const res = await api('/profile')
     const prof = res?.profile || null
     if (!prof) return
 
-    if (app.role === 'empresa') {
+    if (serverCompanyProfile()) {
       form.name = prof.companyName || form.name
       form.title = prof.sector || form.title
       form.location = prof.location || form.location
@@ -504,17 +510,18 @@ async function save() {
     return
   }
 
-  app.updateProfile(app.role, {
-    name,
-    title,
-    location,
-    skills: app.role === 'empresa' ? [] : form.skills.split(',').map((s) => s.trim()).filter(Boolean),
-    about: form.about,
-    public: app.role === 'empresa' ? true : !!form.public,
-  })
-
   try {
-    if (app.role === 'empresa') {
+    // Desktop writes carry the last confirmed revision: sending PUT /profile while this
+    // state write is still in flight made the host reject one of them as a conflict.
+    await app.updateProfile(app.role, {
+      name,
+      title,
+      location,
+      skills: app.role === 'empresa' ? [] : form.skills.split(',').map((s) => s.trim()).filter(Boolean),
+      about: form.about,
+      public: app.role === 'empresa' ? true : !!form.public,
+    })
+    if (serverCompanyProfile()) {
       await api('/profile', {
         method: 'PUT',
         body: JSON.stringify({ companyName: name, sector: title, location }),

@@ -948,7 +948,7 @@ export const useAppStore = defineStore("app", {
     updateProfile(role, patch) {
       if (!this.state.profile[role]) return;
       this.state.profile[role] = { ...this.state.profile[role], ...patch };
-      this._persist();
+      return this._persist();
     },
     importStateFromJsonText(text) {
       const data = JSON.parse(text);

@@ -2,7 +2,7 @@ import { test, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import { createPinia, setActivePinia } from 'pinia'
-import { api, apiForm, desktopRequest, getDesktopState } from './api.js'
+import { api, apiAllPages, apiForm, desktopRequest, getDesktopState } from './api.js'
 import {
   isDesktop, DESKTOP_TIMEOUT_MS, DESKTOP_MAX_FILE_BYTES, DESKTOP_MAX_UPLOAD_BYTES,
   DESKTOP_MAX_CHUNK_BYTES, uploadDesktopFile,
@@ -553,4 +553,18 @@ test('missing crypto.subtle or mismatched file size aborts before uploadBegin', 
   }
   await assert.rejects(uploadDesktopFile({ size: 2, arrayBuffer: async () => new Uint8Array([1]).buffer }), { code: 'invalid_file' })
   assert.equal(bridge.sent.length, 0)
+})
+
+test('paginated reads fetch every page instead of the host default of 20', async () => {
+  const entries = Array.from({ length: 450 }, (_, i) => ({ id: `audit-${i}` }))
+  const pending = apiAllPages('/enterprise/audit-log')
+  for (let page = 1; page <= 3; page++) {
+    const request = await posted()
+    assert.equal(request.payload.path, `/enterprise/audit-log?page=${page}&perPage=200`)
+    bridge.reply(request, {
+      ok: true, items: entries.slice((page - 1) * 200, page * 200), totalItems: 450, page, perPage: 200, totalPages: 3,
+      __desktop: metadata(1),
+    })
+  }
+  assert.deepEqual((await pending).map((entry) => entry.id), entries.map((entry) => entry.id))
 })

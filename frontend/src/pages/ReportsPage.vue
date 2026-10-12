@@ -169,7 +169,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { t } from '../lib/i18n.js'
-import { api } from '../lib/api.js'
+import { api, apiAllPages } from '../lib/api.js'
 import { useAuthStore } from '../stores/auth.js'
 import { downloadCsv } from '../lib/storage.js'
 import { FileText, FileSpreadsheet, Download, ClipboardList } from 'lucide-vue-next'
@@ -349,8 +349,7 @@ async function loadApplications(listingId) {
 
 async function loadAuditLog() {
   try {
-    const res = await api('/enterprise/audit-log')
-    const raw = Array.isArray(res) ? res : res?.items || []
+    const raw = await apiAllPages('/enterprise/audit-log')
     auditLog.value = raw.map((e) => ({
       id: e.id || e.audit_id || `${Date.now()}_${Math.random()}`,
       fecha: new Date(e.timestamp || e.created_at || e.createdAt || Date.now()).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),

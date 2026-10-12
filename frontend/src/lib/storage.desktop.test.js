@@ -280,15 +280,15 @@ test('desktop storage and original stores', async (t) => {
   await t.test('audit page treats successful empty data as authoritative and never uses desktop demo fallback', async () => {
     const pageSource = await readFile(new URL('../pages/AuditLogPage.vue', import.meta.url), 'utf8')
     const script = pageSource.match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .*\r?\n/gm, '')
-    const makePage = new Function('computed', 'ref', 'onMounted', 'useAuditStore', 't', 'api', 'isDesktopMode', script + '\nreturn { allEntries, apiError };')
+    const makePage = new Function('computed', 'ref', 'onMounted', 'watch', 'useAuditStore', 't', 'apiAllPages', 'isDesktopMode', script + '\nreturn { allEntries, apiError };')
     for (const desktop of [true, false]) {
       if (desktop) window.chrome.webview = {}
       else delete window.chrome.webview
       for (const fails of [false, true]) {
         let mounted
-        const page = makePage((fn) => ({ get value() { return fn() } }), (value) => ({ value }), (fn) => { mounted = fn }, useAuditStore, (key) => key, async () => {
+        const page = makePage((fn) => ({ get value() { return fn() } }), (value) => ({ value }), (fn) => { mounted = fn }, () => {}, useAuditStore, (key) => key, async () => {
           if (fails) throw new Error('Audit unavailable')
-          return { items: [] }
+          return []
         }, isDesktopMode)
         await mounted()
         assert.equal(page.apiError.value, fails)

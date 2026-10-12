@@ -267,28 +267,6 @@
             </div>
             </div>
 
-            <!-- Delete confirm modal -->
-    <ModalShell v-if="deleteConfirm.open" @close="closeDeleteConfirm">
-      <template #title>{{ t('pipeline.deleteConfirm') }}</template>
-      <div class="stack gap-8">
-        <div class="card">
-          <div class="font-bold">Confirmación</div>
-          <p class="muted text-sm mt-4">
-            Esto eliminará la candidatura y sus datos asociados (tokens y profile_imports). No se puede deshacer.
-          </p>
-        </div>
-        <div class="row gap-8 flex-wrap">
-          <button class="btn btn-ghost" type="button" @click="closeDeleteConfirm" :disabled="deleteConfirm.loading">{{ t('pipeline.cancel') }}</button>
-          <button class="btn btn-danger" type="button" @click="confirmHardDelete" :disabled="deleteConfirm.loading">
-            {{ deleteConfirm.loading ? t('pipeline.deleting') : t('pipeline.confirm') }}
-          </button>
-        </div>
-        <div v-if="deleteConfirm.error" class="card" style="border-color: color-mix(in oklab, var(--color-danger) 50%, var(--color-border))">
-          <code class="font-mono text-sm">{{ deleteConfirm.error }}</code>
-        </div>
-      </div>
-    </ModalShell>
-
     <!-- Candidate modal -->
     <ModalShell v-if="candidateModal.open" @close="closeCandidateModal">
       <template #title>
@@ -392,6 +370,28 @@
 
         <div v-if="candidateModal.error" class="card" style="border-color: color-mix(in oklab, var(--color-danger) 50%, var(--color-border))">
           <code class="text-sm">{{ candidateModal.error }}</code>
+        </div>
+      </div>
+    </ModalShell>
+
+    <!-- Delete confirm modal: after the candidate modal, which opens it, so it stacks on top. -->
+    <ModalShell v-if="deleteConfirm.open" @close="closeDeleteConfirm">
+      <template #title>{{ t('pipeline.deleteConfirm') }}</template>
+      <div class="stack gap-8">
+        <div class="card">
+          <div class="font-bold">Confirmación</div>
+          <p class="muted text-sm mt-4">
+            Esto eliminará la candidatura y sus datos asociados (tokens y profile_imports). No se puede deshacer.
+          </p>
+        </div>
+        <div class="row gap-8 flex-wrap">
+          <button class="btn btn-ghost" type="button" @click="closeDeleteConfirm" :disabled="deleteConfirm.loading">{{ t('pipeline.cancel') }}</button>
+          <button class="btn btn-danger" type="button" @click="confirmHardDelete" :disabled="deleteConfirm.loading">
+            {{ deleteConfirm.loading ? t('pipeline.deleting') : t('pipeline.confirm') }}
+          </button>
+        </div>
+        <div v-if="deleteConfirm.error" class="card" style="border-color: color-mix(in oklab, var(--color-danger) 50%, var(--color-border))">
+          <code class="font-mono text-sm">{{ deleteConfirm.error }}</code>
         </div>
       </div>
     </ModalShell>

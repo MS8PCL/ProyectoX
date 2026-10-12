@@ -100,6 +100,8 @@ const addedExistingSectionKeys = new Set([
   'reports.subtitle', 'reports.reportType', 'reports.date', 'reports.action',
   'pipeline.fieldFirstName', 'pipeline.fieldLastName', 'pipeline.fieldEmail', 'pipeline.fieldBirthDate',
   'pipeline.fieldCoverLetter', 'pipeline.importResults', 'pipeline.subtitleShared',
+  'outbox.detailCandidate', 'outbox.detailListing', 'outbox.detailDepartment', 'outbox.detailJobTitle', 'outbox.detailStartDate',
+  'outbox.detailCostCenter', 'outbox.detailManager', 'outbox.detailAccess', 'outbox.detailHardware', 'outbox.detailNotes',
 ])
 
 function originalEntries(dictionary, prefix = '') {

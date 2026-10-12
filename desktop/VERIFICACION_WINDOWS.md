@@ -1,5 +1,7 @@
 # Verificación final en Windows
 
+Resultados observados de la PR #1: [RESULTADOS_WINDOWS.md](RESULTADOS_WINDOWS.md). Las casillas pendientes no están aprobadas.
+
 Lo que no se puede comprobar fuera de Windows: compilación WPF, WebView2, diálogos nativos y una carpeta SMB real con varios equipos. Unos 30 minutos.
 
 ## 1. Compilación y pruebas

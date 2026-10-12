@@ -5,7 +5,7 @@
       <div class="row justify-between items-center">
         <div>
           <h2 class="text-lg font-bold" style="margin: 0">{{ t('pipeline.title') }}</h2>
-          <p class="muted text-sm mt-4">{{ t('pipeline.subtitle') }}</p>
+          <p class="muted text-sm mt-4">{{ isDesktop() ? t('pipeline.subtitleShared') : t('pipeline.subtitle') }}</p>
         </div>
         <div class="row items-center gap-8">
           <span class="badge">{{ activeFilterCount ? `${filteredTotalCandidates} de ${totalCandidates} ${t('pipeline.candidates')}` : `${totalCandidates} ${t('pipeline.candidates')}` }}</span>
@@ -261,7 +261,7 @@
             </div>
           </div>
 
-          <div class="muted text-sm mt-16">* Datos de PocketBase (multi-sesión)</div>
+          <div v-if="!isDesktop()" class="muted text-sm mt-16">* Datos de PocketBase (multi-sesión)</div>
         </div>
               </div>
             </div>
@@ -322,7 +322,7 @@
             <div class="muted text-sm mt-4">{{ candidateModal.profile?.firstName || '—' }} {{ candidateModal.profile?.lastName || '' }}</div>
             <div class="muted text-sm mt-4">{{ candidateModal.profile?.email || '—' }}</div>
             <div class="muted text-sm mt-4">birthDate={{ fmtDate(candidateModal.application?.birthDate) || '—' }}</div>
-            <div class="muted text-sm mt-8">{{ t('pipeline.coverLetter') }}</div>
+            <div class="muted text-sm mt-8">{{ t('pipeline.fieldCoverLetter') }}</div>
             <div style="white-space: pre-wrap">{{ candidateModal.application?.coverLetter || '—' }}</div>
           </div>
           <div class="row gap-8 flex-wrap">
@@ -428,24 +428,24 @@
               </div>
               <div class="grid-2 mt-8">
                 <div class="stack gap-4">
-                  <label class="muted text-sm font-semibold">{{ t('pipeline.firstName') }}</label>
+                  <label class="muted text-sm font-semibold">{{ t('pipeline.fieldFirstName') }}</label>
                   <input class="input" v-model="r.firstName" maxlength="80" required />
                 </div>
                 <div class="stack gap-4">
-                  <label class="muted text-sm font-semibold">{{ t('pipeline.lastName') }}</label>
+                  <label class="muted text-sm font-semibold">{{ t('pipeline.fieldLastName') }}</label>
                   <input class="input" v-model="r.lastName" maxlength="120" required />
                 </div>
                 <div class="stack gap-4">
-                  <label class="muted text-sm font-semibold">{{ t('pipeline.email') }}</label>
+                  <label class="muted text-sm font-semibold">{{ t('pipeline.fieldEmail') }}</label>
                   <input class="input" type="email" v-model="r.email" maxlength="120" required />
                 </div>
                 <div class="stack gap-4">
-                  <label class="muted text-sm font-semibold">{{ t('pipeline.birthDate') }}</label>
+                  <label class="muted text-sm font-semibold">{{ t('pipeline.fieldBirthDate') }}</label>
                   <input class="input" type="date" v-model="r.birthDate" required />
                 </div>
               </div>
               <div class="stack gap-4 mt-8">
-                <label class="muted text-sm font-semibold">coverLetter</label>
+                <label class="muted text-sm font-semibold">{{ t('pipeline.fieldCoverLetter') }}</label>
                 <textarea class="textarea" rows="3" v-model="r.coverLetter" maxlength="5000" required />
               </div>
               <div class="grid-2 mt-8">
@@ -494,20 +494,23 @@
           <div class="stack gap-8">
             <div v-for="(p,idx) in importPreview" :key="idx" class="card" style="background: var(--color-surface-hover)">
               <div class="font-bold">#{{ idx+1 }} — {{ p.firstName || '—' }} {{ p.lastName || '' }}</div>
-              <div class="muted text-sm mt-4">{{ p.email || '—' }} · birthDate={{ p.birthDate || '—' }}</div>
-              <div class="muted text-sm mt-4">cv={{ p.cvName || '—' }} · certs={{ p.certCount }}</div>
+              <div class="muted text-sm mt-4">{{ p.email || '—' }} · {{ t('pipeline.fieldBirthDate') }}: {{ p.birthDate || '—' }}</div>
+              <div class="muted text-sm mt-4">CV: {{ p.cvName || '—' }} · {{ t('pipeline.certsOptional') }}: {{ p.certCount }}</div>
               <div v-if="p.error" class="text-sm mt-4" style="color: var(--color-danger)">{{ p.error }}</div>
             </div>
           </div>
           <div class="row gap-8 flex-wrap">
             <button class="btn btn-ghost" type="button" @click="importModal.step='edit'" :disabled="importModal.loading">{{ t('pipeline.back') }}</button>
-            <button class="btn btn-primary" type="button" @click="runImport" :disabled="importModal.loading || importPreviewHasErrors">
+            <button class="btn btn-primary" type="button" @click="runImport" :disabled="importModal.loading || importPreviewHasErrors || importAllDone">
               {{ importModal.loading ? t('pipeline.importing') : t('pipeline.importDefinitive') }}
             </button>
           </div>
           <div v-if="importModal.results.length" class="card" style="background: var(--color-bg)">
-            <div class="muted text-sm">Resultados (JSON)</div>
-            <pre class="text-sm mt-8" style="white-space: pre-wrap; font-family: var(--font-mono)">{{ JSON.stringify(importModal.results, null, 2) }}</pre>
+            <div class="muted text-sm">{{ t('pipeline.importResults') }}</div>
+            <div v-for="(r, idx) in importModal.results" :key="idx" class="text-sm mt-8" :style="r.ok ? '' : 'color: var(--color-danger)'">
+              {{ r.ok ? '✓' : '×' }} {{ r.name || r.inputEmail || '' }}
+              <span class="muted">— {{ r.ok ? (r.res?.already ? 'ya estaba en la oferta; documentos añadidos a su candidatura' : 'importado') : r.error }}</span>
+            </div>
           </div>
           <div v-if="importModal.error" class="card" style="border-color: color-mix(in oklab, var(--color-danger) 50%, var(--color-border))">
             <code class="text-sm">{{ importModal.error }}</code>
@@ -922,6 +925,7 @@ const importPreview = computed(() => {
     const coverLetter = String(r.coverLetter || '').trim()
     const cv = r.cv || null
     const certs = Array.isArray(r.certs) ? r.certs : []
+    let error = ''
     const allowed = [
       'application/pdf',
       'application/msword',
@@ -932,12 +936,11 @@ const importPreview = computed(() => {
       if (f && f.type && !allowed.includes(String(f.type))) error = error || 'Certificado: tipo no permitido'
     }
 
-    let error = ''
-    if (!firstName) error = error || 'Falta firstName'
-    if (!lastName) error = error || 'Falta lastName'
-    if (!email) error = error || 'Falta email'
-    if (!birthDate) error = error || 'Falta birthDate'
-    if (!coverLetter) error = error || 'Falta coverLetter'
+    if (!firstName) error = error || 'Falta el nombre'
+    if (!lastName) error = error || 'Faltan los apellidos'
+    if (!email) error = error || 'Falta el email'
+    if (!birthDate) error = error || 'Falta la fecha de nacimiento'
+    if (!coverLetter) error = error || 'Falta la carta de presentación'
     if (!cv) error = error || 'Falta CV'
     if (cv && typeof cv.size === 'number' && cv.size > 50 * 1024 * 1024) error = error || 'CV supera 50MB'
     if (cv && cv.type && ![
@@ -960,6 +963,8 @@ const importPreview = computed(() => {
 })
 
 const importPreviewHasErrors = computed(() => importPreview.value.some((p) => !!p.error))
+// Imported rows are never sent again: a second click would attach another copy of the CV.
+const importAllDone = computed(() => importModal.rows.length > 0 && importModal.rows.every((r) => r.imported))
 
 function openImportModal(listingId) {
   importModal.open = true
@@ -1096,6 +1101,7 @@ async function runImport() {
   importModal.loading = true
   try {
     for (const r of importModal.rows) {
+      if (r.imported) continue
       const fd = new FormData()
       fd.set('firstName', String(r.firstName || '').trim())
       fd.set('lastName', String(r.lastName || '').trim())
@@ -1106,16 +1112,18 @@ async function runImport() {
       fd.set('cv', r.cv, cvName)
       for (const f of r.certs || []) fd.append('certificates', f)
       const res = await apiForm(`/interno/listings/${encodeURIComponent(importModal.listingId)}/import_candidate`, fd)
-      importModal.results.push({ ok: true, inputEmail: r.email, res })
+      r.imported = true
+      importModal.results.push({ ok: true, inputEmail: r.email, name: `${r.firstName} ${r.lastName}`.trim(), res })
       console.log('[import_candidate] ok', { inputEmail: r.email, res })
     }
-    await loadApplications(importModal.listingId)
     importModal.step = 'preview'
   } catch (e) {
     importModal.error = String(e?.message || e)
     importModal.results.push({ ok: false, error: importModal.error })
     console.log('[import_candidate] error', importModal.error)
   } finally {
+    // Rows imported before a failure are already on the board.
+    await loadApplications(importModal.listingId).catch(() => {})
     importModal.loading = false
   }
 }
@@ -1186,7 +1194,9 @@ watch(
   { immediate: true }
 )
 
-const autoRefresh = reactive({ timer: null, listingId: '', intervalMs: 3000 })
+// Each desktop read takes the shared store's exclusive file lock and parses the whole
+// state; polling every 3 s from several workstations starves writers on SMB.
+const autoRefresh = reactive({ timer: null, listingId: '', intervalMs: isDesktop() ? 15000 : 3000 })
 
 function stopAutoRefresh() {
   if (autoRefresh.timer) clearInterval(autoRefresh.timer)

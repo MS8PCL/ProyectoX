@@ -98,6 +98,8 @@ test('literal scan excludes dynamic identifiers, properties and partial expressi
 const addedExistingSectionKeys = new Set([
   'audit.subtitle', 'hireTools.submitting', 'rbac.subtitle', 'pipeline.skillsPlaceholder',
   'reports.subtitle', 'reports.reportType', 'reports.date', 'reports.action',
+  'pipeline.fieldFirstName', 'pipeline.fieldLastName', 'pipeline.fieldEmail', 'pipeline.fieldBirthDate',
+  'pipeline.fieldCoverLetter', 'pipeline.importResults', 'pipeline.subtitleShared',
 ])
 
 function originalEntries(dictionary, prefix = '') {

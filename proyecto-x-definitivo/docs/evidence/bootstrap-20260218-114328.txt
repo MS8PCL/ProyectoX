@@ -1,1 +1,0 @@
-[bootstrap] ok: ensured user_state + profile_imports + candidate_profiles + company_profiles + listings + applications + listing_favorites

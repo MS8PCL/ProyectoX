@@ -1,0 +1,44 @@
+# dependencies
+node_modules/
+
+# builds
+frontend/dist/
+frontend/.vite/
+backend/dist/
+
+# env
+.env
+.env.*
+
+# logs
+*.log
+
+# OS
+.DS_Store
+
+# PocketBase local data (if any)
+pb_data/
+
+# Private data, local configuration and distributable copies
+backups/
+backup_portable/
+openclaw_backups/
+windows-native/
+Proyecto_X_Completo/
+CREDENCIALES.txt
+DOCUMENTO_RESUMEN.txt
+FICHA_TECNICA.txt
+LEEME.txt
+*.zip
+*.exe
+*.db
+*.db-wal
+*.db-shm
+**/config.json
+**/config.*.local.json
+**/runtime-data/
+docs/evidence/
+MEDIA/
+._*
+**/__pycache__/
+*.pyc

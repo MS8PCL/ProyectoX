@@ -1,0 +1,19 @@
+# Build outputs and local configuration
+**/bin/
+**/obj/
+**/artifacts/
+ui/dist/
+frontend-dist/
+**/__pycache__/
+config.json
+**/config.json
+runtime-data/
+**/runtime-data/
+*.log
+
+# Business data must never be committed
+state.json
+state.backup.json
+commit.pending
+.write.lock
+.store-*.tmp

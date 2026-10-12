@@ -1,1 +1,0 @@
-[bootstrap-departments] ok: seeded 80 departments

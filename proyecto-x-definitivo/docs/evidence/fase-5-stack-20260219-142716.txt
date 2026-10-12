@@ -1,4 +1,0 @@
-docker compose up -d --build
-
-curl http://localhost:8787/api/health
-{"ok":true}

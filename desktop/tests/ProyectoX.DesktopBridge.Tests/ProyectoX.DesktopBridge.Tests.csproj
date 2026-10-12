@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/ProyectoX.Storage/ProyectoX.Storage.csproj" />
+    <Compile Include="../../src/ProyectoX.Desktop/DesktopBridge.cs" Link="DesktopBridge.cs" />
+    <Compile Include="../../src/ProyectoX.Desktop/StorageBridge.cs" Link="StorageBridge.cs" />
+    <Compile Include="../../src/ProyectoX.Desktop/LegacyApi.cs" Link="LegacyApi.cs" />
+    <Compile Include="../../src/ProyectoX.Desktop/DocumentApi.cs" Link="DocumentApi.cs" />
+    <Compile Include="../../src/ProyectoX.Desktop/HostLog.cs" Link="HostLog.cs" />
+  </ItemGroup>
+</Project>

@@ -1,9 +1,10 @@
+param([string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $artifacts = Join-Path $root 'artifacts'
 $staging = Join-Path $artifacts ('installer-build-' + [Guid]::NewGuid().ToString('N'))
 $payload = Join-Path $artifacts 'installer-payload.zip'
-$output = Join-Path $artifacts 'installer'
+$output = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { Join-Path $artifacts 'installer' } else { [System.IO.Path]::GetFullPath($OutputDirectory) }
 $application = Join-Path $root 'src\ProyectoX.Desktop\ProyectoX.Desktop.csproj'
 $installer = Join-Path $root 'src\ProyectoX.Installer\ProyectoX.Installer.csproj'
 try {
@@ -20,7 +21,7 @@ try {
     & dotnet publish $installer -c Release -r win-x64 --self-contained true -o $output -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false
     if ($LASTEXITCODE -ne 0) { throw 'Ha fallado la publicacion del instalador.' }
     Write-Host "Instalador generado: $output\ProyectoX.Installer.exe"
-    Write-Host 'Incluye .NET 8. Requiere WebView2 Runtime. El usuario elige expresamente una UNC existente.'
+    Write-Host 'Incluye .NET 8. Requiere WebView2 Runtime. El usuario elige expresamente una carpeta de datos local o UNC existente.'
 } finally {
     if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
 }

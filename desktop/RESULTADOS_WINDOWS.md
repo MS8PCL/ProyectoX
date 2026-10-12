@@ -23,14 +23,14 @@ La primera ejecución de `verify.ps1` falló al compilar el host real con CS0246
 
 Cambio mínimo: añadir `using System.IO;`. Prueba añadida: `desktop/tests/test_windows_build.ps1`, integrada en `verify.ps1`, que compila el proyecto WPF real. Se ejecutó antes del cambio y falló con los mismos errores; después pasó y se repitió la verificación completa. No se modificaron la concurrencia, preferencias, auditorías, semillas ni los textos i18n.
 
-## Instalador con selección de UNC
+## Instalador con selección de datos locales o UNC
 
-Se añadió un [asistente Windows](INSTALADOR.md) por petición del propietario. Incluye .NET 8 y solicita una UNC existente, solo lectura y rol operativo, sin escribir en el recurso ni sobrescribir instalaciones.
+Se añadió un [asistente Windows](INSTALADOR.md) por petición del propietario. Incluye .NET 8 y solicita una carpeta existente local o UNC, solo lectura y rol operativo, sin escribir en los datos ni sobrescribir instalaciones. Datos e instalación deben estar en carpetas independientes.
 
 - [x] Generación del EXE único self-contained mediante `build.ps1 -Installer`.
-- [x] Motor: 18/18 pruebas sintéticas correctas; integrado en `verify.ps1`.
-- [x] Extracción y configuración del ZIP distribuible real en un temporal sintético: 19/19 pruebas incluyendo el paquete; no representa una prueba SMB.
-- [x] Ventana real del EXE: campos, solo lectura por defecto, rechazo de ruta local, detección de WebView2 y rechazo de UNC sintética inaccesible sin instalación ni fallback.
+- [x] Motor: 23/23 pruebas sintéticas correctas; integrado en `verify.ps1`.
+- [x] Extracción y configuración del ZIP distribuible real en un temporal sintético: 25/25 pruebas incluyendo el paquete con UNC sintética y datos locales; no representa una prueba SMB.
+- [x] Ventana real del EXE: campos, solo lectura por defecto, rechazo de ruta relativa, detección de WebView2, rechazo de UNC sintética inaccesible sin instalación ni fallback y aceptación de ruta local hasta comprobar la separación de carpetas.
 - [ ] Instalación efectiva con una UNC autorizada, acceso del menú Inicio y arranque de la aplicación instalada: pendiente.
 
 Estas comprobaciones no aprueban las casillas del recorrido funcional ni las de dos equipos.

@@ -32,14 +32,14 @@ try {
     if ($toggle.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::On) { throw 'Solo lectura no viene seleccionado.' }
     $value = $destination.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
     if ($value.Current.Value -notmatch '^[A-Za-z]:\\') { throw 'El destino por defecto no es absoluto.' }
-    # Ruta sintetica local invalida: debe rechazarse antes de acceder a SMB o instalar.
-    $network.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('C:\UNC-invalida-sintetica')
+    # Las rutas relativas siguen siendo invalidas; una ruta local absoluta ahora es valida.
+    $network.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('datos-relativos-sinteticos')
     $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     Start-Sleep -Milliseconds 500
     $status = Find-Control $window 'Status'
-    if ($status.Current.Name -notlike '*UNC*') { throw 'No se muestra el rechazo de la ruta no UNC.' }
+    if ($status.Current.Name -notlike '*ruta absoluta*') { throw 'No se muestra el rechazo de la ruta relativa.' }
     if (-not $button.Current.IsEnabled) { throw 'El rechazo deja bloqueado el asistente.' }
-    Write-Host 'PASS Ventana real del instalador, campos, solo lectura y rechazo de ruta local.'
+    Write-Host 'PASS Ventana real del instalador, campos, solo lectura y rechazo de ruta relativa.'
     # Dominio reservado .invalid: no contiene datos reales ni puede ser un recurso autorizado.
     $syntheticDestination = Join-Path ([System.IO.Path]::GetTempPath()) ('proyectox-ui-' + [Guid]::NewGuid().ToString('N'))
     $value.SetValue($syntheticDestination)
@@ -49,9 +49,23 @@ try {
     $deadline = [DateTime]::UtcNow.AddSeconds(45)
     while (-not $button.Current.IsEnabled -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 250 }
     $status = Find-Control $window 'Status'
-    if (-not $button.Current.IsEnabled -or $status.Current.Name -notlike '*recurso UNC*') { throw 'No se obtiene el rechazo del recurso UNC inaccesible tras comprobar WebView2.' }
+    if (-not $button.Current.IsEnabled -or $status.Current.Name -notlike '*carpeta de datos*') { throw 'No se obtiene el rechazo del recurso UNC inaccesible tras comprobar WebView2.' }
     if (Test-Path -LiteralPath $syntheticDestination) { throw 'Se ha creado una instalacion pese al recurso UNC inaccesible.' }
     Write-Host 'PASS WebView2 disponible y UNC inaccesible rechazada sin instalacion ni fallback local.'
+    $localData = Join-Path ([System.IO.Path]::GetTempPath()) ('proyectox-ui-local-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $localData | Out-Null
+    try {
+        $network.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($localData)
+        $value.SetValue($localData)
+        $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+        Start-Sleep -Milliseconds 250
+        $deadline = [DateTime]::UtcNow.AddSeconds(15)
+        while (-not $button.Current.IsEnabled -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 250 }
+        $status = Find-Control $window 'Status'
+        if (-not $button.Current.IsEnabled -or $status.Current.Name -notlike '*independientes*') { throw 'La ruta local no se acepta hasta validar la separacion de datos e instalacion.' }
+        if (@(Get-ChildItem -LiteralPath $localData -Force).Count -ne 0) { throw 'El rechazo de carpetas coincidentes ha escrito datos.' }
+        Write-Host 'PASS Ruta local existente admitida y carpetas coincidentes rechazadas sin escritura.'
+    } finally { Remove-Item -LiteralPath $localData -Recurse -Force }
 } finally {
     if (-not $process.HasExited) {
         $process.CloseMainWindow() | Out-Null

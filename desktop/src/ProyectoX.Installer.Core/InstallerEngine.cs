@@ -6,7 +6,7 @@ namespace ProyectoX.Installer;
 
 public sealed record InstallerOptions(string NetworkRoot, bool ReadOnly, string OperationalRole);
 
-/// <summary>Instala exclusivamente en disco local; la red solo se consulta, nunca se modifica.</summary>
+/// <summary>Instala en disco local; la carpeta de datos, local o UNC, solo se consulta.</summary>
 public sealed class InstallerEngine
 {
     private const long MaximumBytes = 1024L * 1024 * 1024;
@@ -40,10 +40,25 @@ public sealed class InstallerEngine
         return normalized;
     }
 
+    /// <summary>Admite UNC o rutas Windows con unidad absoluta, nunca relativas ni de dispositivo.</summary>
+    public static string NormalizeDataRoot(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        if (path.StartsWith(@"\\", StringComparison.Ordinal)) return NormalizeUnc(path);
+        var normalized = path.Replace('/', '\\');
+        if (normalized.Length < 3 || !char.IsAsciiLetter(normalized[0]) || normalized[1] != ':' || normalized[2] != '\\')
+            throw new ArgumentException(@"Seleccione una ruta absoluta de datos: local (G:\Datos) o UNC (\\servidor\recurso).", nameof(path));
+        if (normalized.Length == 3) return normalized;
+        normalized = normalized.TrimEnd('\\');
+        if (normalized[3..].Split('\\').Any(part => !IsSafeSegment(part)))
+            throw new ArgumentException("La ruta local contiene componentes inválidos.", nameof(path));
+        return normalized;
+    }
+
     public static string BuildConfiguration(InstallerOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        var networkRoot = NormalizeUnc(options.NetworkRoot);
+        var networkRoot = NormalizeDataRoot(options.NetworkRoot);
         if (options.OperationalRole is not ("rrhh" or "it" or "admin"))
             throw new ArgumentException("El rol debe ser rrhh, it o admin.", nameof(options));
         return JsonSerializer.Serialize(new
@@ -56,15 +71,25 @@ public sealed class InstallerEngine
 
     /// <summary>
     /// Extrae con límites a un staging hermano y publica mediante Directory.Move.
-    /// El stream pertenece al llamador. No sobrescribe instalaciones ni escribe en la UNC.
+    /// El stream pertenece al llamador. No sobrescribe instalaciones ni escribe en la carpeta de datos.
     /// </summary>
     public void Install(Stream payload, string destination, InstallerOptions options)
     {
         ArgumentNullException.ThrowIfNull(payload);
         var configuration = BuildConfiguration(options);
-        if (!networkDirectoryExists(NormalizeUnc(options.NetworkRoot)))
-            throw new IOException("El recurso UNC no existe o no está accesible; no se utilizará un destino alternativo.");
+        var dataRoot = NormalizeDataRoot(options.NetworkRoot);
+        if (!networkDirectoryExists(dataRoot))
+            throw new IOException("La carpeta de datos local o UNC no existe o no está accesible; no se utilizará un destino alternativo.");
         var target = ValidateDestination(destination);
+        if (!dataRoot.StartsWith(@"\\", StringComparison.Ordinal) && OperatingSystem.IsWindows())
+        {
+            var data = Path.GetFullPath(dataRoot).TrimEnd('\\');
+            var app = target.TrimEnd('\\');
+            if (string.Equals(data, app, StringComparison.OrdinalIgnoreCase) ||
+                app.StartsWith(data + "\\", StringComparison.OrdinalIgnoreCase) ||
+                data.StartsWith(app + "\\", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Las carpetas de datos y de instalación deben ser independientes: no pueden coincidir ni estar una dentro de la otra.");
+        }
         EnsureEmptyOrMissing(target);
         var parent = Path.GetDirectoryName(target)!;
         if (!Directory.Exists(parent))

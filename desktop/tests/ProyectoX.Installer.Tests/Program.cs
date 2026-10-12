@@ -16,6 +16,11 @@ internal static class Program
         {
             ("UNC normalizada y JSON con backslashes", Configuration),
             ("UNC inválidas", InvalidUnc),
+            ("Configuración con ruta local absoluta y espacios", LocalConfiguration),
+            ("Datos locales: instalación sin modificar el almacén", LocalInstallation),
+            ("Datos locales inaccesibles sin crearlos ni usar fallback", LocalUnavailable),
+            ("Datos e instalación no pueden coincidir ni contenerse", OverlappingDirectories),
+            ("Rutas de datos relativas y de dispositivo rechazadas", InvalidDataPaths),
             ("Roles permitidos y rechazados", Roles),
             ("Red inaccesible sin fallback local", Unavailable),
             ("Instalación en destino inexistente", () => Successful(false)),
@@ -54,6 +59,12 @@ internal static class Program
                 Console.Error.WriteLine($"FAIL ZIP publicado self-contained: {args[0]}: {error}");
             }
         }
+        if (args.Length > 0 && OperatingSystem.IsWindows())
+        {
+            total++;
+            try { PublishedLocalPayload(args[0]); Console.WriteLine("PASS ZIP publicado instalado con datos locales intactos"); }
+            catch (Exception error) { failed++; Console.Error.WriteLine($"FAIL ZIP publicado con datos locales: {error}"); }
+        }
         Console.WriteLine($"Resultados: {total - failed}/{total} pruebas correctas.");
         return failed == 0 ? 0 : 1;
     }
@@ -90,6 +101,23 @@ internal static class Program
         Equal(1, Directory.GetFileSystemEntries(root).Length);
     });
 
+    private static void PublishedLocalPayload(string zipPath) => InWorkspace(root =>
+    {
+        var data = Path.Combine(root, "datos locales sintéticos");
+        Directory.CreateDirectory(data);
+        File.WriteAllText(Path.Combine(data, "marker.txt"), "almacén intacto");
+        using var payload = File.OpenRead(zipPath);
+        var target = Target(root);
+        new InstallerEngine().Install(payload, target, Options with { NetworkRoot = data, ReadOnly = false });
+        foreach (var name in new[] { "ProyectoX.Desktop.exe", "coreclr.dll", "hostfxr.dll" })
+            Check(new FileInfo(Path.Combine(target, name)).Length > 0, $"Falta binario local {name}.");
+        using var config = JsonDocument.Parse(File.ReadAllText(Path.Combine(target, "config.json")));
+        Equal(data, config.RootElement.GetProperty("networkRoot").GetString()!);
+        Check(!config.RootElement.GetProperty("readOnly").GetBoolean(), "Configuración local incorrecta.");
+        Equal("almacén intacto", File.ReadAllText(Path.Combine(data, "marker.txt")));
+        Equal(1, Directory.GetFileSystemEntries(data).Length);
+    });
+
     private static void Configuration()
     {
         Equal(@"\\servidor-ficticio\recurso\carpeta", InstallerEngine.NormalizeUnc(Options.NetworkRoot));
@@ -108,6 +136,77 @@ internal static class Program
         foreach (var path in new[] { "", " ", "C:\\local", "/tmp/local", "//server/share", @"\\server", @"\\server\", @"\\\share", @"\\server\\share", @"\\?\UNC\server\share", @"\\.\server\share", @"\\server\share\.", @"\\server\share\..\escape", @"\\server\sh:are", @"\\server\share\bad*", @"\\server\share\bad?", @"\\server\share\bad|", @"\\server\share\bad<", "\\\\server\\share\\bad\"", @"\\server\share/child", @"\\server\share\trailing.", @"\\server\share\trailing ", "\\\\server\\share\\bad\0" })
             Throws<ArgumentException>(() => InstallerEngine.NormalizeUnc(path));
         Throws<ArgumentNullException>(() => InstallerEngine.NormalizeUnc(null!));
+    }
+
+    private static void LocalConfiguration()
+    {
+        foreach (var path in new[] { @"G:\Prueba X", @"G:\Prueba X\", "G:/Prueba X/" })
+        {
+            using var json = JsonDocument.Parse(InstallerEngine.BuildConfiguration(Options with { NetworkRoot = path, ReadOnly = false }));
+            Equal(@"G:\Prueba X", json.RootElement.GetProperty("networkRoot").GetString()!);
+            Check(!json.RootElement.GetProperty("readOnly").GetBoolean(), "No se conserva escritura local.");
+        }
+    }
+
+    private static void LocalInstallation()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        InWorkspace(root =>
+        {
+            var data = Path.Combine(root, "datos sintéticos");
+            Directory.CreateDirectory(data);
+            File.WriteAllText(Path.Combine(data, "marker.txt"), "datos sintéticos intactos");
+            foreach (var readOnly in new[] { true, false })
+            {
+                using var zip = Payload();
+                var target = Path.Combine(root, readOnly ? "lectura" : "escritura");
+                new InstallerEngine().Install(zip, target, Options with { NetworkRoot = data, ReadOnly = readOnly });
+                using var config = JsonDocument.Parse(File.ReadAllText(Path.Combine(target, "config.json")));
+                Equal(data, config.RootElement.GetProperty("networkRoot").GetString()!);
+                Equal(readOnly, config.RootElement.GetProperty("readOnly").GetBoolean());
+            }
+            Equal("datos sintéticos intactos", File.ReadAllText(Path.Combine(data, "marker.txt")));
+            Equal(1, Directory.GetFileSystemEntries(data).Length);
+        });
+    }
+
+    private static void LocalUnavailable()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        InWorkspace(root =>
+        {
+            using var zip = Payload();
+            var missing = Path.Combine(root, "datos inexistentes");
+            Throws<IOException>(() => new InstallerEngine().Install(zip, Target(root), Options with { NetworkRoot = missing }));
+            Equal(0, Directory.GetFileSystemEntries(root).Length);
+        });
+    }
+
+    private static void OverlappingDirectories()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        InWorkspace(root =>
+        {
+            var data = Path.Combine(root, "datos");
+            Directory.CreateDirectory(data);
+            foreach (var target in new[] { data, data.ToUpperInvariant(), Path.Combine(data, "app"), root })
+            {
+                using var zip = Payload();
+                Throws<ArgumentException>(() => new InstallerEngine().Install(zip, target, Options with { NetworkRoot = data }));
+                Equal(0, Directory.GetFileSystemEntries(data).Length);
+                Equal(1, Directory.GetFileSystemEntries(root).Length);
+            }
+            // Un prefijo parecido no implica que las carpetas se contengan.
+            using var validZip = Payload();
+            new InstallerEngine().Install(validZip, data + "-app", Options with { NetworkRoot = data });
+            Check(File.Exists(Path.Combine(data + "-app", "config.json")), "Se rechaza un directorio independiente.");
+        });
+    }
+
+    private static void InvalidDataPaths()
+    {
+        foreach (var path in new[] { "", "datos", @"G:datos", @"\datos", "/tmp/datos", @"\\?\G:\datos", @"G:\datos\..\otra", @"G:\datos\bad*" })
+            Throws<ArgumentException>(() => InstallerEngine.BuildConfiguration(Options with { NetworkRoot = path }));
     }
 
     private static void Roles()

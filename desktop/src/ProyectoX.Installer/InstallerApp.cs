@@ -41,10 +41,10 @@ internal sealed class InstallerWindow : Window
         panel.Children.Add(new TextBlock { Text = "Instalar Proyecto X", FontSize = 25, Margin = new Thickness(0, 0, 0, 16) });
         panel.Children.Add(new TextBlock
         {
-            Text = "Instalación local para este usuario, sin permisos de administrador. Incluye .NET 8; requiere Microsoft Edge WebView2 Runtime. Los datos permanecen en el recurso compartido elegido.",
+            Text = "Instalación local para este usuario, sin permisos de administrador. Incluye .NET 8; requiere Microsoft Edge WebView2 Runtime. Los datos permanecen en la carpeta local o UNC elegida.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 18)
         });
-        form.Children.Add(Label("Carpeta UNC existente para los datos (\\\\servidor\\recurso\\carpeta)"));
+        form.Children.Add(Label("Carpeta existente para los datos (local o UNC)"));
         networkRoot.SetValue(System.Windows.Automation.AutomationProperties.AutomationIdProperty, "NetworkRoot");
         form.Children.Add(Row(networkRoot, "Explorar…", "BrowseNetwork", (_, _) => Browse(networkRoot, true)));
         form.Children.Add(Label("Carpeta local de instalación (nueva o vacía)"));
@@ -58,7 +58,7 @@ internal sealed class InstallerWindow : Window
         form.Children.Add(role);
         form.Children.Add(new TextBlock
         {
-            Text = "El rol y «Solo lectura» no sustituyen los permisos de Windows (ACL). El instalador comprueba que la UNC existe, pero no escribe en ella ni comprueba permisos de escritura. No crea una carpeta de datos ni usa una copia local si falla la red.",
+            Text = "El rol y «Solo lectura» no sustituyen los permisos de Windows (ACL). El instalador comprueba que la carpeta de datos existe, pero no escribe en ella ni comprueba permisos de escritura. Datos e instalación deben estar en carpetas independientes. No crea carpetas de datos ni cambia de destino si falla la red.",
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0)
         });
         panel.Children.Add(form);
@@ -100,13 +100,10 @@ internal sealed class InstallerWindow : Window
 
     private void Browse(TextBox field, bool network)
     {
-        var dialog = new OpenFolderDialog { Title = network ? "Seleccione una carpeta del recurso compartido" : "Seleccione una carpeta local vacía", Multiselect = false };
+        var dialog = new OpenFolderDialog { Title = network ? "Seleccione una carpeta de datos local o UNC" : "Seleccione una carpeta local vacía", Multiselect = false };
         if (dialog.ShowDialog(this) == true)
         {
-            // Se exige UNC explícita: una unidad mapeada no se transforma en una ruta inventada.
             field.Text = dialog.FolderName;
-            if (network && !field.Text.StartsWith(@"\\", StringComparison.Ordinal))
-                status.Text = "Escriba la ruta UNC completa; no se admiten letras de unidades mapeadas como destino de datos.";
         }
     }
 
@@ -123,7 +120,7 @@ internal sealed class InstallerWindow : Window
             busy = true;
             install.IsEnabled = false;
             form.IsEnabled = false;
-            status.Text = "Comprobando WebView2, acceso al recurso e instalando… No se escribirá en el recurso compartido.";
+            status.Text = "Comprobando WebView2, acceso al recurso e instalando… No se escribirá en la carpeta de datos.";
             await Task.Run(() =>
             {
                 try { CoreWebView2Environment.GetAvailableBrowserVersionString(); }
@@ -141,7 +138,7 @@ internal sealed class InstallerWindow : Window
             });
             installedDirectory = Path.GetFullPath(target);
             var shortcut = TryCreateShortcut(installedDirectory);
-            status.Text = "Instalación completada. La configuración está guardada junto al ejecutable. No se han modificado los datos del recurso compartido."
+            status.Text = "Instalación completada. La configuración está guardada junto al ejecutable. No se ha modificado la carpeta de datos elegida."
                 + (shortcut ? " Se ha creado un acceso en el menú Inicio." : " No se pudo crear el acceso del menú Inicio; puede abrir el ejecutable en la carpeta elegida.");
             install.Visibility = Visibility.Collapsed;
             launch.Visibility = Visibility.Visible;

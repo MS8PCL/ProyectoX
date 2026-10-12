@@ -15,6 +15,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Candidates/applications CRUD and reference conflicts", Applications),
     ("Deleting an imported application removes its own imports", ImportedApplicationDelete),
     ("Atomic hire, outbox export and completion", Hire),
+    ("New stores serve official catalogs so IT onboarding works", SeededCatalogHire),
     ("Standalone hire-tools frontend shape", StandaloneHire),
     ("Catalog filters, audit pagination and real metrics", Reporting),
     ("Explicit unsupported operations and document dispatch", Unsupported),
@@ -76,10 +77,14 @@ static JsonObject HireBody(string application) => new()
 static async Task Empty()
 {
     using var f = new Fixture();
-    foreach (var path in new[] { "/listings", "/candidates", "/applications", "/departments", "/job_titles", "/enterprise/outbox", "/enterprise/catalog/items", "/enterprise/rbac/rules", "/enterprise/hire-profiles", "/enterprise/audit-log" })
+    foreach (var path in new[] { "/listings", "/candidates", "/applications", "/enterprise/outbox", "/enterprise/catalog/items", "/enterprise/rbac/rules", "/enterprise/hire-profiles", "/enterprise/audit-log" })
     {
         var r = await Get(f, path); Check(r["items"]!.AsArray().Count == 0); Check(Rev(r) == 0);
     }
+    // Only the official reference catalogs (backend/src/seeds) are served; reading writes nothing.
+    var departments = (await Get(f, "/interno/departments"))["items"]!.AsArray();
+    Check(departments.Count > 50 && departments.Any(x => Str(x!["name"]) == "RHIT - Information Technologies" && Str(x!["code"]) == "RHIT"));
+    Check(Str((await Get(f, "/interno/job_titles"))["items"]![0]!["name"]) == "GEN - General");
     Check((await Get(f, "/profile"))["profile"] is null);
     var state = (await Get(f, "/state"))["state"]!.AsObject();
         Check(state["listings"]!.AsArray().Count == 0 && state["candidates"]!.AsArray().Count == 0 && state["applications"]!.AsArray().Count == 0);
@@ -223,6 +228,20 @@ static async Task ImportedApplicationDelete()
     var data = (await f.Store.ReadAsync()).Data;
     Check(data["applications"]!.AsArray().Count == 0);
     Check(data["profile_imports"]!.AsArray().Select(x => Str(x!["id"])).SequenceEqual(["imp-own"]));
+}
+static async Task SeededCatalogHire()
+{
+    using var f = new Fixture(); var (_, _, a) = await Setup(f);
+    var dep = Str((await Get(f, "/interno/departments?q=Business"))["items"]![0]!["id"]);
+    var job = Str((await Get(f, "/interno/job_titles"))["items"]![0]!["id"]);
+    var body = new JsonObject { ["applicationId"] = a, ["startDate"] = "2026-11-02", ["departmentId"] = dep, ["jobTitleId"] = job, ["costCenter"] = "CC1", ["managerEmail"] = "jefa@example.org", ["accessProfileId"] = "estandar" };
+    var r = await Write(f, "/interno/hire/enqueue_it_request", "POST", body);
+    Check(Str(r["outbox"]!["export_blob"]!["department"]!["name"]) == "BD - Business Development");
+    var data = (await f.Store.ReadAsync()).Data;
+    Check(data["departments"]!.AsArray().Count > 50, "the first write persists the official catalog");
+    data["departments"] = new JsonArray(new JsonObject { ["id"] = "own", ["name"] = "Own", ["isActive"] = true });
+    await f.Store.CommitAsync((await f.Store.ReadAsync()).Revision, data, "test");
+    Check((await Get(f, "/interno/departments"))["items"]!.AsArray().Count == 1, "an existing catalog is never replaced");
 }
 static async Task Hire()
 {

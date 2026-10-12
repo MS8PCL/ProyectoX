@@ -14,6 +14,9 @@
     <EmbeddedResource Include="../../frontend-dist/**/*">
       <LogicalName>ProyectoX.Ui/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="../../../backend/src/seeds/departments.seed.cjs;../../../backend/src/seeds/job_titles.seed.cjs">
+      <LogicalName>ProyectoX.Seeds/%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
   <Target Name="RequireBuiltUi" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
     <Error Condition="!Exists('$(MSBuildProjectDirectory)/../../frontend-dist/index.html')" Text="Build the original frontend in desktop mode first: desktop/frontend-dist/index.html is required." />

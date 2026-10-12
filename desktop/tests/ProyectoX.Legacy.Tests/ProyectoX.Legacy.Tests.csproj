@@ -10,5 +10,8 @@
     <Compile Include="../../src/ProyectoX.Desktop/LegacyApi.cs" Link="LegacyApi.cs" />
     <Compile Include="../../src/ProyectoX.Storage/SharedStore.cs" Link="SharedStore.cs" />
     <Compile Include="../../src/ProyectoX.Storage/Contracts.cs" Link="Contracts.cs" />
+    <EmbeddedResource Include="../../../backend/src/seeds/departments.seed.cjs;../../../backend/src/seeds/job_titles.seed.cjs">
+      <LogicalName>ProyectoX.Seeds/%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>

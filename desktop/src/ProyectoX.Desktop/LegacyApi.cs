@@ -57,6 +57,7 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
         {
             var snapshot = await store.ReadAsync(token);
             var data = Normalize(snapshot.Data);
+            SeedCatalogs(data);
             return WithMetadata(Dispatch(data, path, query, method, body, "", false), snapshot.Revision, data);
         }
         if (readOnly) throw Error("read_only", "El almacenamiento está en modo solo lectura.");
@@ -78,6 +79,7 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
             return WithMetadata(ReplayResult(next, path, method, body, operationId), before.Revision, next);
         if (before.Revision != revision) throw Error("conflict", "Los datos han cambiado. Recargue antes de guardar.");
         MergeCandidateAliases(next);
+        SeedCatalogs(next);
         var result = Dispatch(next, path, query, method, body, operationId, false);
         SynchronizeCandidateAliases(next);
         Array(next, "audit_log").Add(new JsonObject
@@ -668,6 +670,35 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
     private void RequireStaff()
     {
         if (identity.Role is not ("admin" or "rrhh" or "it")) throw Error("forbidden", "Esta operación requiere un rol interno autorizado por el host.");
+    }
+
+    // A new store has no departments or job titles, which made every IT onboarding impossible.
+    // The official lists the web backend seeded are embedded unchanged; stable ids let a GET
+    // show the same rows that the next write persists. Existing catalogs are never touched.
+    private static readonly Dictionary<string, JsonObject[]> CatalogSeeds = new[] { "departments", "job_titles" }
+        .ToDictionary(collection => collection, LoadCatalogSeed);
+    private static JsonObject[] LoadCatalogSeed(string collection)
+    {
+        using var stream = typeof(LegacyApi).Assembly.GetManifestResourceStream($"ProyectoX.Seeds/{collection}.seed.cjs");
+        if (stream is null) return [];
+        var rows = new List<JsonObject>(); var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var line in new StreamReader(stream).ReadToEnd().Split('\n'))
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(line, @"^\s*'([^']+)',?\s*$");
+            if (!match.Success) continue;
+            var name = match.Groups[1].Value.Trim();
+            var key = new string(name.ToLowerInvariant().Where(c => c is >= 'a' and <= 'z' or >= '0' and <= '9').ToArray());
+            if (key.Length == 0 || !seen.Add(key)) continue;
+            var separator = name.IndexOf(" - ", StringComparison.Ordinal);
+            rows.Add(new JsonObject { ["id"] = $"seed-{collection}-{key}", ["code"] = separator >= 0 ? name[..separator].Trim() : name, ["name"] = name, ["normalizedKey"] = key, ["isActive"] = true });
+        }
+        return rows.ToArray();
+    }
+    private static void SeedCatalogs(JsonObject data)
+    {
+        foreach (var (collection, seeds) in CatalogSeeds)
+            if (seeds.Length > 0 && (data[collection] is not JsonArray existing || existing.Count == 0))
+                data[collection] = new JsonArray(seeds.Select(row => (JsonNode?)row.DeepClone()).ToArray());
     }
 
     private static JsonObject Normalize(JsonObject source)

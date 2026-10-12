@@ -568,3 +568,15 @@ test('paginated reads fetch every page instead of the host default of 20', async
   }
   assert.deepEqual((await pending).map((entry) => entry.id), entries.map((entry) => entry.id))
 })
+
+test('document and mail actions wait for the Windows dialog instead of 30 s', async () => {
+  const timers = []
+  const realSetTimeout = globalThis.setTimeout
+  globalThis.setTimeout = (fn, ms) => { timers.push(ms); return realSetTimeout(() => {}, 0) }
+  try {
+    desktopRequest('documentAction', { path: '/documents/x', action: 'save' }).catch(() => {})
+    desktopRequest('getState').catch(() => {})
+  } finally { globalThis.setTimeout = realSetTimeout }
+  assert.deepEqual(timers, [10 * 60_000, DESKTOP_TIMEOUT_MS])
+})
+

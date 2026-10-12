@@ -128,7 +128,13 @@ function connection(bridge) {
 }
 
 /** Direct host operations (document pick/download etc.), without HTTP or local fallbacks. */
-export function desktopRequest(operation, payload = {}, { timeoutMs = DESKTOP_TIMEOUT_MS } = {}) {
+// These wait on a Windows dialog or confirmation; 30 s reported "uncertain" while the user
+// was still choosing a folder, although the host completed the action afterwards.
+export const DESKTOP_INTERACTIVE_TIMEOUT_MS = 10 * 60_000
+const INTERACTIVE_OPERATIONS = new Set(['documentAction', 'openMail'])
+export function desktopRequest(operation, payload = {}, {
+  timeoutMs = INTERACTIVE_OPERATIONS.has(operation) ? DESKTOP_INTERACTIVE_TIMEOUT_MS : DESKTOP_TIMEOUT_MS,
+} = {}) {
   const bridge = globalThis.window?.chrome?.webview
   if (!bridge) return Promise.reject(new DesktopError('bridge_unavailable', 'No hay conexión con el host desktop.'))
   if (typeof operation !== 'string' || !operation || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {

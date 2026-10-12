@@ -7,7 +7,7 @@ Revisión inicial: `3c4d54e8b4d82262bb2548110033a12beb0255d7`, rama `claude/tend
 - Windows 11 Pro, versión 10.0.26200, compilación 26200.
 - .NET SDK 8.0.425; Node.js v24.13.0.
 - WebView2 Runtime instalado: 154.0.4258.62 (registro de EdgeUpdate). No se ha ejecutado la aplicación para confirmar el runtime utilizado por el proceso.
-- No se han usado datos reales, creado una instalación de prueba ni publicado configuración, binarios o rutas internas.
+- No se han usado datos reales, creado una instalación permanente o sobre SMB ni publicado configuración, binarios o rutas internas. Las pruebas del instalador usan temporales propios y datos sintéticos.
 
 ## 1. Compilación y pruebas
 
@@ -22,6 +22,18 @@ Commit: `3d7fe9d` — Corrige el import de StreamReader en WPF.
 La primera ejecución de `verify.ps1` falló al compilar el host real con CS0246 en `LegacyApi.cs`: faltaba el import `System.IO` para `StreamReader`. CS1579 era un error derivado. Los proyectos de pruebas net8.0 aportaban ese import implícitamente y ocultaban el problema del proyecto WPF.
 
 Cambio mínimo: añadir `using System.IO;`. Prueba añadida: `desktop/tests/test_windows_build.ps1`, integrada en `verify.ps1`, que compila el proyecto WPF real. Se ejecutó antes del cambio y falló con los mismos errores; después pasó y se repitió la verificación completa. No se modificaron la concurrencia, preferencias, auditorías, semillas ni los textos i18n.
+
+## Instalador con selección de UNC
+
+Se añadió un [asistente Windows](INSTALADOR.md) por petición del propietario. Incluye .NET 8 y solicita una UNC existente, solo lectura y rol operativo, sin escribir en el recurso ni sobrescribir instalaciones.
+
+- [x] Generación del EXE único self-contained mediante `build.ps1 -Installer`.
+- [x] Motor: 18/18 pruebas sintéticas correctas; integrado en `verify.ps1`.
+- [x] Extracción y configuración del ZIP distribuible real en un temporal sintético: 19/19 pruebas incluyendo el paquete; no representa una prueba SMB.
+- [x] Ventana real del EXE: campos, solo lectura por defecto, rechazo de ruta local, detección de WebView2 y rechazo de UNC sintética inaccesible sin instalación ni fallback.
+- [ ] Instalación efectiva con una UNC autorizada, acceso del menú Inicio y arranque de la aplicación instalada: pendiente.
+
+Estas comprobaciones no aprueban las casillas del recorrido funcional ni las de dos equipos.
 
 ## 2. Instalación de prueba — pendiente
 

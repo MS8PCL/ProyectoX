@@ -25,7 +25,7 @@ Publicación **Release `win-x64`, framework-dependent**:
 desktop/artifacts/release/ProyectoX.Desktop.exe
 ```
 
-Distribuir toda la carpeta. Requiere .NET Desktop Runtime 8 y Microsoft Edge WebView2 Runtime. No hay instalador ni firma todavía. Modificar Vue no cambia un EXE ya construido: recompilar y publicar.
+Para la versión portable, distribuir toda la carpeta; requiere .NET Desktop Runtime 8 y Microsoft Edge WebView2 Runtime. También hay un [instalador con selección de UNC](INSTALADOR.md), generado con `tools/build.ps1 -Installer`, que incluye .NET 8 y guarda la configuración elegida junto al EXE. Ambos entregables requieren WebView2 Runtime y todavía no están firmados. Modificar Vue no cambia un EXE ya construido: recompilar y publicar.
 
 Se lee únicamente `config.json` junto al EXE, no la configuración de la raíz del repositorio ni del directorio de trabajo. Campos:
 
@@ -39,7 +39,7 @@ Se lee únicamente `config.json` junto al EXE, no la configuración de la raíz 
 
 La UNC anterior es un ejemplo, no un destino autorizado. La raíz debe existir. No se crea una copia local alternativa si falla la red. `config.example.json` tiene una ruta vacía deliberada. `readOnly` no reemplaza ACL; para lectura coordinada requiere que `.write.lock` exista o permisos para crearlo.
 
-**El repositorio no incluye configuración de ejecución ni datos.** Cada instalación debe elegir expresamente una carpeta de pruebas o una ruta compartida y crear su configuración junto al EXE. Las configuraciones locales y entregables privados están excluidos de Git.
+**El repositorio no incluye configuración de ejecución ni datos.** Cada instalación debe elegir expresamente una carpeta de pruebas o una ruta compartida. El instalador solicita una UNC existente y crea la configuración junto al EXE; en la versión portable se crea manualmente. Las configuraciones locales y entregables privados están excluidos de Git.
 
 ## Migración sin tocar el origen
 
@@ -98,4 +98,4 @@ Se ha comprobado la UI real en WebView2 y revisado una captura. Esta comprobaci�
 - Outbox/OTRS es manual; no aprovisiona IAM ni crea tickets remotos automáticamente. Mocks no son integraciones.
 - Endpoints de workflow/preview que no estaban conectados a las pantallas actuales siguen explícitamente no implementados en C#.
 - Algunos cálculos/reportes y funciones heredadas de la UI requieren revisión adicional; recuperar las pantallas no certifica cada función previa. Dashboard desktop usa métricas reales, sin tendencias demo ni tiempo fijo.
-- Falta la ruta UNC definitiva, prueba SMB con dos equipos, desconexiones/reinicios, ACL y backups/retención, instalador/firma y política de versiones compatibles.
+- Falta la ruta UNC definitiva, prueba SMB con dos equipos, desconexiones/reinicios, ACL y backups/retención, validación del instalador sobre el SMB real, firma y política de versiones compatibles.

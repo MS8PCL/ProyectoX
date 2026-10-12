@@ -19,4 +19,8 @@ foreach ($test in @('ProyectoX.Legacy.Tests', 'ProyectoX.Documents.Tests', 'Proy
 }
 & python (Join-Path $root 'tests\test_migrate_pocketbase.py')
 if ($LASTEXITCODE -ne 0) { throw 'Han fallado las pruebas de migración.' }
+& dotnet run --project (Join-Path $root 'tests\ProyectoX.Installer.Tests\ProyectoX.Installer.Tests.csproj') -c Release
+if ($LASTEXITCODE -ne 0) { throw 'Han fallado las pruebas del instalador.' }
+& dotnet build (Join-Path $root 'src\ProyectoX.Installer\ProyectoX.Installer.csproj') -c Release
+if ($LASTEXITCODE -ne 0) { throw 'Ha fallado la compilacion del asistente de instalacion.' }
 Write-Host 'Pruebas locales y compilación completadas. No se ha abierto la aplicación ni validado una ruta SMB real.'

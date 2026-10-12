@@ -182,6 +182,8 @@ const es = {
     fieldCoverLetter: "Carta de presentación",
     importResults: "Resultado",
     subtitleShared: "Vista multi-sesión: ofertas y candidaturas compartidas",
+    loadError: "No se pudieron leer los datos compartidos; lo mostrado puede no estar actualizado",
+    docsLoadError: "No se pudieron cargar los documentos",
     noEntries: "Añade al menos 1 candidato.",
     previewSummary: "Se importarán {count} candidatos en el listing.",
     importSuccess: "Import exitoso",
@@ -271,6 +273,7 @@ const es = {
     system: "sistema",
   },
   reports: {
+    loadError: "No se pudieron leer los datos compartidos; el informe está incompleto",
     title: "Informes",
     subtitle: "Consulta y exporta datos de selección, métricas y auditoría",
     reportType: "Tipo de informe",
@@ -661,6 +664,8 @@ const en = {
     fieldCoverLetter: "Cover letter",
     importResults: "Results",
     subtitleShared: "Multi-session view: shared jobs and applications",
+    loadError: "Shared data could not be read; what is shown may be out of date",
+    docsLoadError: "Documents could not be loaded",
     noEntries: "Add at least 1 candidate.",
     previewSummary: "{count} candidates will be imported into the listing.",
     importSuccess: "Import successful",
@@ -749,6 +754,7 @@ const en = {
     system: "system",
   },
   reports: {
+    loadError: "Shared data could not be read; this report is incomplete",
     title: "Reports",
     subtitle: "View and export recruitment, metrics and audit data",
     reportType: "Report type",

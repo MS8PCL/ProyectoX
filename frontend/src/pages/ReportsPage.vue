@@ -57,7 +57,7 @@
             v-if="reportType === 'pipeline' || reportType === 'audit'"
             class="btn btn-primary btn-sm"
             type="button"
-            :disabled="!filteredData.length"
+            :disabled="!filteredData.length || !!loadError"
             @click="exportCsv"
           >
             <Download :size="14" />
@@ -67,6 +67,7 @@
             v-if="reportType === 'metrics'"
             class="btn btn-primary btn-sm"
             type="button"
+            :disabled="!!loadError"
             @click="exportMetrics"
           >
             <FileText :size="14" />
@@ -75,7 +76,8 @@
         </div>
       </div>
 
-      <div v-if="!filteredData.length" class="muted text-sm">{{ t('reports.noData') }}</div>
+      <div v-if="loadError" class="card" role="alert" style="border-color: var(--color-danger)">{{ t('reports.loadError') }}: {{ loadError }}</div>
+      <div v-else-if="!filteredData.length" class="muted text-sm">{{ t('reports.noData') }}</div>
 
       <!-- Pipeline table -->
       <div v-else-if="reportType === 'pipeline'" class="table-wrap">
@@ -169,7 +171,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { t } from '../lib/i18n.js'
-import { api, apiAllPages } from '../lib/api.js'
+import { api, apiAllPages, isDesktop } from '../lib/api.js'
 import { isPipelineListing } from '../lib/listingKinds.js'
 import { useAuthStore } from '../stores/auth.js'
 import { downloadCsv } from '../lib/storage.js'
@@ -314,12 +316,19 @@ function exportMetrics() {
   ])
 }
 
+// An unreachable store must not produce an empty report that can be exported as if real.
+const loadError = ref('')
+function failLoad(e) {
+  loadError.value = String(e?.message || e)
+}
+
 async function loadListings() {
   try {
     const res = await api('/listings')
     listings.value = (res.items || []).filter(isPipelineListing)
-  } catch {
+  } catch (e) {
     listings.value = []
+    failLoad(e)
   }
 }
 
@@ -344,8 +353,9 @@ async function loadApplications(listingId) {
         }
       })
     )
-  } catch {
+  } catch (e) {
     appsByListing[listingId] = []
+    failLoad(e)
   }
 }
 
@@ -360,7 +370,13 @@ async function loadAuditLog() {
       ts: e.timestamp || e.created_at || e.createdAt || new Date().toISOString(),
     }))
     return
-  } catch {
+  } catch (e) {
+    // Desktop has no local audit: an old browser copy would pass for the shared log.
+    if (isDesktop()) {
+      auditLog.value = []
+      failLoad(e)
+      return
+    }
   }
   try {
     const raw = localStorage.getItem('proyecto_x_audit_log')

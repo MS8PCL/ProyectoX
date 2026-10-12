@@ -14,6 +14,7 @@
     </div>
 
     <div v-if="documentActionError" class="card muted" role="alert">{{ documentActionError }}</div>
+    <div v-if="loadError" class="card" role="alert" style="border-color: var(--color-danger)">{{ t('pipeline.loadError') }}: {{ loadError }}</div>
 
         <div v-if="!['admin','rrhh','it'].includes(auth.user?.role)" class="card muted">
       {{ t('pipeline.internalOnly') }}
@@ -135,7 +136,7 @@
     </div>
 
     <div class="stack">
-      <div v-if="!companyListings.length" class="card muted">{{ t('pipeline.empty') }}</div>
+      <div v-if="!companyListings.length && !loadError" class="card muted">{{ t('pipeline.empty') }}</div>
 
       <!-- Accordion per listing -->
       <div v-for="l in companyListings" :key="l.id" class="card">
@@ -1170,9 +1171,18 @@ async function loadJobTitles(q) {
   }
 }
 
+// A failed read must not look like an empty store (or invite publishing): keep what was
+// shown, say it may be stale, and clear the notice on the next successful read.
+const loadError = ref('')
+
 async function loadListings() {
-  const res = await api('/listings')
-  listings.value = res.items || []
+  try {
+    const res = await api('/listings')
+    listings.value = res.items || []
+    loadError.value = ''
+  } catch (e) {
+    loadError.value = String(e?.message || e)
+  }
 }
 
 const companyListings = computed(() => (listings.value || []).filter(isPipelineListing))
@@ -1235,8 +1245,15 @@ async function loadApplications(listingId) {
   if (appsLoading[listingId]) return
   appsLoading[listingId] = true
   try {
-    const res = await api(`/company/listings/${encodeURIComponent(listingId)}/applications`)
+    let res
+    try {
+      res = await api(`/company/listings/${encodeURIComponent(listingId)}/applications`)
+    } catch (e) {
+      loadError.value = String(e?.message || e)
+      return
+    }
     appsByListing[listingId] = res.items || []
+    loadError.value = ''
     const missing = Array.from(
       new Set(
         (appsByListing[listingId] || [])
@@ -1314,8 +1331,10 @@ async function loadDocs(applicationId) {
   try {
     const res = await api(`/interno/applications/${encodeURIComponent(applicationId)}/documents`)
     candidateModal.docs = res.items || []
-  } catch {
+  } catch (e) {
+    // "(sin CV)" would claim the candidate has no documents.
     candidateModal.docs = []
+    candidateModal.error = `${t('pipeline.docsLoadError')}: ${e?.message || e}`
   } finally {
     candidateModal.loadingDocs = false
   }

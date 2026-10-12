@@ -77,11 +77,19 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
         var next = Normalize(before.Data);
         if (HasReceipt(next, operationId, fingerprint))
             return WithMetadata(ReplayResult(next, path, method, body, operationId), before.Revision, next);
+        // /state and /settings only replace this identity's own preference record. Requiring the
+        // global revision made every theme or language change fail whenever anyone else had saved
+        // anything; only a newer save of this same record (another window of this user) conflicts.
+        var preferences = method == "PUT" && path is "/state" or "/settings" ? "desktop_user_" + path[1..] : null;
+        if (preferences is not null && before.Revision != revision &&
+            !(DesktopRecord(next, preferences)?["savedRevision"] is JsonValue saved && saved.TryGetValue<long>(out var savedAt) && savedAt > revision))
+            revision = before.Revision;
         if (before.Revision != revision) throw Error("conflict", "Los datos han cambiado. Recargue antes de guardar.");
         MergeCandidateAliases(next);
         SeedCatalogs(next);
         var result = Dispatch(next, path, query, method, body, operationId, false);
         SynchronizeCandidateAliases(next);
+        if (preferences is not null && DesktopRecord(next, preferences) is { } record) record["savedRevision"] = revision + 1;
         Array(next, "audit_log").Add(new JsonObject
         {
             ["id"] = NewId(operationId, "audit"), ["at"] = Now(), ["action"] = method + " " + AuditRoute(path),

@@ -10,6 +10,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Revision races and durable uncertain outcomes", Concurrency),
     ("Windows identity, staff ACL, readOnly and cancellation", Permissions),
     ("User-specific state never overwrites shared collections", State),
+    ("Own preferences save on a stale revision; shared writes still conflict", StalePreferences),
     ("Own profile and onboarding completeness", Profile),
     ("PocketBase candidate profile IDs, aliases and pipeline stages", Imported),
     ("Candidates/applications CRUD and reference conflicts", Applications),
@@ -242,6 +243,18 @@ static async Task SeededCatalogHire()
     data["departments"] = new JsonArray(new JsonObject { ["id"] = "own", ["name"] = "Own", ["isActive"] = true });
     await f.Store.CommitAsync((await f.Store.ReadAsync()).Revision, data, "test");
     Check((await Get(f, "/interno/departments"))["items"]!.AsArray().Count == 1, "an existing catalog is never replaced");
+}
+static async Task StalePreferences()
+{
+    using var f = new Fixture(); var (l, _, _) = await Setup(f);
+    var stale = (await f.Store.ReadAsync()).Revision;
+    await Write(f, "/listings/" + l, "PATCH", Obj("""{"location":"Bilbao"}"""));
+    var saved = await f.Api.HandleAsync(Request("/state", "PUT", Obj("""{"state":{"theme":"light","listings":[]}}"""), stale), default);
+    Check(Rev(saved) == stale + 2);
+    Check(Str((await Get(f, "/state"))["state"]!["theme"]) == "light");
+    Check(Str((await f.Store.ReadAsync()).Data["listings"]![0]!["location"]) == "Bilbao", "shared data untouched");
+    await Code("conflict", () => f.Api.HandleAsync(Request("/listings/" + l, "PATCH", Obj("""{"location":"Vigo"}"""), stale), default));
+    await Code("conflict", () => f.Api.HandleAsync(Request("/state", "PUT", Obj("""{"state":{"theme":"terminal"}}"""), stale), default));
 }
 static async Task Hire()
 {

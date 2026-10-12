@@ -23,6 +23,8 @@ internal static class Program
             ("Rutas de datos relativas y de dispositivo rechazadas", InvalidDataPaths),
             ("Roles permitidos y rechazados", Roles),
             ("Red inaccesible sin fallback local", Unavailable),
+            ("Datos bajo enlaces o carpetas sincronizadas rechazados como en la aplicación", ReparseDataRoot),
+            ("Detección real de enlaces en la carpeta y sus padres", ReparseDetection),
             ("Instalación en destino inexistente", () => Successful(false)),
             ("Instalación en carpeta vacía", () => Successful(true)),
             ("Destino ocupado y configuración intactos", Occupied),
@@ -116,6 +118,42 @@ internal static class Program
         Check(!config.RootElement.GetProperty("readOnly").GetBoolean(), "Configuración local incorrecta.");
         Equal("almacén intacto", File.ReadAllText(Path.Combine(data, "marker.txt")));
         Equal(1, Directory.GetFileSystemEntries(data).Length);
+    });
+
+    private static void ReparseDataRoot() => InWorkspace(root =>
+    {
+        // SharedStore rechaza puntos de reanálisis en la carpeta o sus padres (OneDrive, junctions):
+        // instalar una configuración que la aplicación no abrirá dejaba un fallo solo al arrancar.
+        using var zip = Payload();
+        var target = Target(root);
+        try
+        {
+            new InstallerEngine(_ => true, _ => true).Install(zip, target, Options);
+            throw new Exception("Debía rechazar la carpeta de datos.");
+        }
+        catch (IOException error)
+        {
+            Check(error.Message.Contains("OneDrive", StringComparison.Ordinal), "El mensaje no explica el motivo.");
+        }
+        Equal(0, Directory.GetFileSystemEntries(root).Length);
+        using var valid = Payload();
+        new InstallerEngine(_ => true, _ => false).Install(valid, target, Options);
+        Check(File.Exists(Path.Combine(target, "config.json")), "Sin enlaces debe instalar.");
+    });
+
+    private static void ReparseDetection() => InWorkspace(root =>
+    {
+        var real = Directory.CreateDirectory(Path.Combine(root, "real", "datos")).FullName;
+        Check(!InstallerEngine.HasReparseAncestor(real), "Una carpeta normal no es un enlace.");
+        var link = Path.Combine(root, "enlace");
+        try { Directory.CreateSymbolicLink(link, Path.Combine(root, "real")); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            Console.WriteLine("  (omitida: este sistema no permite crear enlaces simbólicos)");
+            return;
+        }
+        Check(InstallerEngine.HasReparseAncestor(Path.Combine(link, "datos")), "No detecta el enlace en un padre.");
+        Check(InstallerEngine.HasReparseAncestor(link), "No detecta el enlace en la propia carpeta.");
     });
 
     private static void Configuration()

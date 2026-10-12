@@ -18,10 +18,25 @@ public sealed class InstallerEngine
         "runtime-data", "documents", "pocketbase-storage"
     };
     private readonly Func<string, bool> networkDirectoryExists;
+    private readonly Func<string, bool> hasReparseAncestor;
 
-    public InstallerEngine(Func<string, bool>? networkDirectoryExists = null)
+    public InstallerEngine(Func<string, bool>? networkDirectoryExists = null, Func<string, bool>? hasReparseAncestor = null)
     {
         this.networkDirectoryExists = networkDirectoryExists ?? Directory.Exists;
+        this.hasReparseAncestor = hasReparseAncestor ?? HasReparseAncestor;
+    }
+
+    /// <summary>
+    /// Misma regla que SharedStore.ValidateRoot: la aplicación rechaza puntos de reanálisis
+    /// (enlaces, junctions, carpetas sincronizadas como OneDrive) en la carpeta o sus padres.
+    /// Solo lee atributos; las carpetas inexistentes no cuentan (su ausencia ya se comprobó).
+    /// </summary>
+    public static bool HasReparseAncestor(string path)
+    {
+        for (var directory = new DirectoryInfo(path); directory is not null; directory = directory.Parent)
+            if (directory.Exists && (directory.Attributes & FileAttributes.ReparsePoint) != 0)
+                return true;
+        return false;
     }
 
     /// <summary>Admite UNC ordinarias y elimina separadores finales, sin resolver rutas relativas.</summary>
@@ -80,6 +95,8 @@ public sealed class InstallerEngine
         var dataRoot = NormalizeDataRoot(options.NetworkRoot);
         if (!networkDirectoryExists(dataRoot))
             throw new IOException("La carpeta de datos local o UNC no existe o no está accesible; no se utilizará un destino alternativo.");
+        if (hasReparseAncestor(dataRoot))
+            throw new IOException("La carpeta de datos, o una carpeta superior, es un enlace, junction o carpeta sincronizada (por ejemplo OneDrive). Proyecto X no abre datos en esas ubicaciones: elija una carpeta normal o una ruta UNC.");
         var target = ValidateDestination(destination);
         if (!dataRoot.StartsWith(@"\\", StringComparison.Ordinal) && OperatingSystem.IsWindows())
         {

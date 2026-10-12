@@ -137,9 +137,11 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
             }
             if (snapshot.Revision != revision) throw Error("conflict", "Los datos han cambiado. Recargue antes de guardar.");
             var used = new HashSet<string>(StringComparer.Ordinal);
+            var rowsBefore = EntityRevisions.Rows(data);
             // Files are published before state. A failed/uncertain commit may leave harmless
             // UUID orphans; never delete files that a recovered journal may reference.
             var result = await WriteAsync(data, path, body, used, token);
+            EntityRevisions.Stamp(data, EntityRevisions.Touched(rowsBefore, data), revision + 1);
             operations[op] = fingerprint;
             results[op] = result.DeepClone();
             Rows(data, "audit_log").Add(new JsonObject { ["id"] = Guid.NewGuid().ToString("D"), ["at"] = Now(), ["action"] = method + " " + path, ["actorUserId"] = identity.Id, ["correlationId"] = op });

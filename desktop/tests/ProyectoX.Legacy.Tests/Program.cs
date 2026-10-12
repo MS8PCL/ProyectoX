@@ -8,6 +8,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Listing CRUD, normalized paths, object/string bodies", Listings),
     ("Receipts, canonical fingerprints, stale retry, UUID collision", Receipts),
     ("Revision races and durable uncertain outcomes", Concurrency),
+    ("Stale edits apply only to records unchanged since the caller's revision", PerRecordConcurrency),
     ("Windows identity, staff ACL, readOnly and cancellation", Permissions),
     ("User-specific state never overwrites shared collections", State),
     ("Own preferences save on a stale revision; shared writes still conflict", StalePreferences),
@@ -255,6 +256,23 @@ static async Task StalePreferences()
     Check(Str((await f.Store.ReadAsync()).Data["listings"]![0]!["location"]) == "Bilbao", "shared data untouched");
     await Code("conflict", () => f.Api.HandleAsync(Request("/listings/" + l, "PATCH", Obj("""{"location":"Vigo"}"""), stale), default));
     await Code("conflict", () => f.Api.HandleAsync(Request("/state", "PUT", Obj("""{"state":{"theme":"terminal"}}"""), stale), default));
+}
+static async Task PerRecordConcurrency()
+{
+    using var f = new Fixture(); var (l, _, a) = await Setup(f);
+    var c2 = Str((await Write(f, "/candidates", "POST", Obj("""{"fullName":"Grace Hopper","email":"grace@example.org"}""")))["item"]!["id"]);
+    var a2 = Str((await Write(f, "/applications", "POST", new JsonObject { ["listingId"] = l, ["candidateUserId"] = c2 }))["item"]!["id"]);
+    var stale = (await f.Store.ReadAsync()).Revision;
+    await Write(f, "/company/applications/" + a2, "PATCH", Obj("""{"notes":"Otro puesto"}"""));
+    var moved = await f.Api.HandleAsync(Request("/company/applications/" + a, "PATCH", Obj("""{"stage":"entrevista"}"""), stale), default);
+    Check(Str(moved["item"]!["stage"]) == "entrevista" && Rev(moved) == stale + 2, "an untouched record accepts a stale edit");
+    await Code("conflict", () => f.Api.HandleAsync(Request("/company/applications/" + a2, "PATCH", Obj("""{"notes":"Pisado"}"""), stale), default));
+    await Code("conflict", () => f.Api.HandleAsync(Request("/listings", "POST", Listing(), stale), default));
+    Check(Str((await f.Store.ReadAsync()).Data["applications"]!.AsArray().OfType<JsonObject>().Single(x => Str(x["id"]) == a2)["notes"]) == "Otro puesto");
+    var raw = await f.Store.ReadAsync();
+    raw.Data["applications"]!.AsArray().Add(new JsonObject { ["id"] = "unstamped", ["listingId"] = l, ["candidateUserId"] = c2, ["stage"] = "nuevo" });
+    await f.Store.CommitAsync(raw.Revision, raw.Data, "older host");
+    await Code("conflict", () => f.Api.HandleAsync(Request("/company/applications/unstamped", "PATCH", Obj("""{"notes":"x"}"""), raw.Revision), default));
 }
 static async Task Hire()
 {

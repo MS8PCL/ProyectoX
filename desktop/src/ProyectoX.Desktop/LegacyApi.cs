@@ -81,14 +81,26 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
         // global revision made every theme or language change fail whenever anyone else had saved
         // anything; only a newer save of this same record (another window of this user) conflicts.
         var preferences = method == "PUT" && path is "/state" or "/settings" ? "desktop_user_" + path[1..] : null;
-        if (preferences is not null && before.Revision != revision &&
-            !(DesktopRecord(next, preferences)?["savedRevision"] is JsonValue saved && saved.TryGetValue<long>(out var savedAt) && savedAt > revision))
+        if (preferences is not null && before.Revision != revision)
+        {
+            if (DesktopRecord(next, preferences)?["savedRevision"] is JsonValue saved && saved.TryGetValue<long>(out var savedAt) && savedAt > revision)
+                throw Error("conflict", "Los datos han cambiado. Recargue antes de guardar.");
             revision = before.Revision;
-        if (before.Revision != revision) throw Error("conflict", "Los datos han cambiado. Recargue antes de guardar.");
+        }
         MergeCandidateAliases(next);
         SeedCatalogs(next);
+        var rowsBefore = EntityRevisions.Rows(next);
         var result = Dispatch(next, path, query, method, body, operationId, false);
         SynchronizeCandidateAliases(next);
+        var touched = EntityRevisions.Touched(rowsBefore, next);
+        if (before.Revision != revision)
+        {
+            // A stale edit only touching records nobody changed since the caller's revision cannot
+            // lose anyone's update, so it applies; anything else still needs the latest revision.
+            if (!EntityRevisions.UnchangedSince(next, touched, revision)) throw Error("conflict", "Los datos han cambiado. Recargue antes de guardar.");
+            revision = before.Revision;
+        }
+        EntityRevisions.Stamp(next, touched, revision + 1);
         if (preferences is not null && DesktopRecord(next, preferences) is { } record) record["savedRevision"] = revision + 1;
         Array(next, "audit_log").Add(new JsonObject
         {
@@ -846,4 +858,50 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
     private static LegacyApiException Unsupported(string method, string path) => Error("unsupported_operation", "Operación local no implementada para esta ruta y método.");
     private static LegacyApiException Invalid(string message) => Error("invalid_request", message);
     private static LegacyApiException Error(string code, string message) => new(code, message);
+}
+
+/// <summary>
+/// Per-record optimistic concurrency on top of the store's global revision. Each write records
+/// the revision at which every business record it touched last changed (in "_revisions", never
+/// inside the records, so snapshots and exports are unchanged). Records without a stamp were last
+/// written by an older host or another path, so they never qualify for a stale write.
+/// </summary>
+internal static class EntityRevisions
+{
+    private const string Key = "_revisions";
+    private static readonly string[] Collections = ["listings", "candidates", "applications", "hire_profiles", "integration_outbox", "notifications", "profile_imports", "documents", "desktop_profiles"];
+
+    internal sealed record Change(IReadOnlyList<string> Existing, IReadOnlyList<string> Created);
+
+    internal static Dictionary<string, JsonNode> Rows(JsonObject data)
+    {
+        var rows = new Dictionary<string, JsonNode>(StringComparer.Ordinal);
+        foreach (var collection in Collections)
+            if (data[collection] is JsonArray array)
+                foreach (var row in array.OfType<JsonObject>())
+                    if (row["id"] is JsonValue id && id.TryGetValue<string>(out var text)) rows.TryAdd(collection + "/" + text, row.DeepClone());
+        return rows;
+    }
+
+    internal static Change Touched(Dictionary<string, JsonNode> before, JsonObject after)
+    {
+        var current = Rows(after);
+        var existing = before.Where(row => !current.TryGetValue(row.Key, out var now) || !JsonNode.DeepEquals(row.Value, now)).Select(row => row.Key).ToList();
+        return new Change(existing, current.Keys.Where(key => !before.ContainsKey(key)).ToList());
+    }
+
+    internal static bool UnchangedSince(JsonObject data, Change change, long revision) =>
+        change.Created.Count == 0 && change.Existing.All(key =>
+            data[Key] is JsonObject stamps && stamps[key] is JsonValue value && value.TryGetValue<long>(out var at) && at <= revision);
+
+    internal static void Stamp(JsonObject data, Change change, long revision)
+    {
+        if (data[Key] is not JsonObject stamps) data[Key] = stamps = new JsonObject();
+        foreach (var key in change.Existing.Concat(change.Created)) stamps[key] = revision;
+        var current = Rows(data);
+        foreach (var removed in change.Existing.Where(key => !current.ContainsKey(key))) stamps.Remove(removed);
+    }
+
+    /// <summary>For writers that do not stamp: the record falls back to the global revision.</summary>
+    internal static void Invalidate(JsonObject data, string collection, string id) => (data[Key] as JsonObject)?.Remove(collection + "/" + id);
 }

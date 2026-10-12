@@ -17,7 +17,7 @@
       </div>
 
       <div class="row" style="gap: 8px">
-        <button class="btn" @click="app.toggleFavorite(l.id)">
+        <button v-if="app.role === 'candidato'" class="btn" @click="app.toggleFavorite(l.id)">
           {{ app.favorites.has(l.id) ? '★ Favorito' : '☆ Favorito' }}
         </button>
         <button v-if="app.role === 'candidato'" class="btn primary" @click="app.applyToListingServer(l.id)">

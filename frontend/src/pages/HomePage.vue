@@ -1,5 +1,6 @@
 <template>
   <div class="dashboard stack" style="gap: 24px">
+    <div v-if="metricsError" class="card" role="alert" style="border-color: var(--color-danger)">{{ t('home.metricsError') }}: {{ metricsError }}</div>
     <!-- ═══ KPI Metrics Row ═══ -->
     <div class="kpi-row">
       <div class="kpi-card card">
@@ -230,6 +231,8 @@ app.bootstrap()
 // ── Server metrics ──
 const serverMetrics = ref(null)
 const metricsLoading = ref(false)
+// The local fallback below can be stale; on desktop say so instead of passing it off as current.
+const metricsError = ref('')
 
 // ── Refs for canvases ──
 const barCanvas = ref(null)
@@ -515,9 +518,11 @@ async function loadMetrics() {
   try {
     const res = await api('/metrics')
     serverMetrics.value = res || {}
-  } catch {
-    // Silencioso: usamos fallback a datos locales del store
+    metricsError.value = ''
+  } catch (e) {
+    // Fallback a datos locales del store, avisando en escritorio de que pueden no estar al día.
     serverMetrics.value = null
+    if (isDesktop()) metricsError.value = String(e?.message || e)
   } finally {
     metricsLoading.value = false
   }

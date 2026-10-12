@@ -20,6 +20,7 @@ const es = {
     profile: "Perfil",
   },
   home: {
+    metricsError: "No se pudieron leer las métricas; las cifras pueden no estar actualizadas",
     dashboard: "Panel",
     totalListings: "Ofertas activas",
     totalCandidates: "Candidatos",
@@ -511,6 +512,7 @@ const en = {
     profile: "Profile",
   },
   home: {
+    metricsError: "Metrics could not be read; figures may be out of date",
     dashboard: "Dashboard",
     totalListings: "Active jobs",
     totalCandidates: "Candidates",

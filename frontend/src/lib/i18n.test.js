@@ -101,7 +101,7 @@ const addedExistingSectionKeys = new Set([
   'pipeline.fieldFirstName', 'pipeline.fieldLastName', 'pipeline.fieldEmail', 'pipeline.fieldBirthDate',
   'pipeline.fieldCoverLetter', 'pipeline.importResults', 'pipeline.subtitleShared',
   'pipeline.loadError', 'pipeline.docsLoadError', 'reports.loadError',
-  'hireTools.missingFields',
+  'hireTools.missingFields', 'home.metricsError',
   'publish.editOffer', 'publish.deleteOffer', 'publish.deleteOfferConfirm', 'publish.cancelEdit', 'publish.saveOffer', 'publish.offerUpdated', 'publish.offerDeleted',
   'outbox.detailCandidate', 'outbox.detailListing', 'outbox.detailDepartment', 'outbox.detailJobTitle', 'outbox.detailStartDate',
   'outbox.detailCostCenter', 'outbox.detailManager', 'outbox.detailAccess', 'outbox.detailHardware', 'outbox.detailNotes',

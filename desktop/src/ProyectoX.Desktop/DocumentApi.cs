@@ -145,7 +145,15 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
             operations[op] = fingerprint;
             results[op] = result.DeepClone();
             Receipts.Trim(data);
-            Rows(data, "audit_log").Add(new JsonObject { ["id"] = Guid.NewGuid().ToString("D"), ["at"] = Now(), ["action"] = method + " " + path, ["actorUserId"] = identity.Id, ["correlationId"] = op });
+            // Same shape as LegacyApi: pseudonymous actor, no record ids in the route, and the
+            // fields the audit page reads (it showed these entries at "now" and as "Sistema").
+            var at = Now(); var route = AuditRoute(path);
+            Rows(data, "audit_log").Add(new JsonObject
+            {
+                ["id"] = Guid.NewGuid().ToString("D"), ["at"] = at, ["action"] = method + " " + route,
+                ["actorType"] = "windows", ["actorUserId"] = Hash(Encoding.UTF8.GetBytes(identity.Id)), ["entityType"] = route.Split('/').ElementAtOrDefault(1),
+                ["timestamp"] = at, ["user"] = identity.DisplayName, ["entity"] = route, ["details"] = method + " " + route, ["correlationId"] = op
+            });
             StoreSnapshot committed;
             try { committed = await store.CommitAsync(revision, data, identity.Id, token); }
             catch (StoreConflictException)
@@ -582,6 +590,7 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
         if (expected.Length != 64 || !expected.All(Uri.IsHexDigit) || !string.Equals(Convert.ToHexString(SHA256.HashData(bytes)), expected, StringComparison.OrdinalIgnoreCase)) throw Invalid("SHA-256 no coincide.");
     }
     private static string Hash(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
+    private static string AuditRoute(string path) => Regex.IsMatch(path, @"^/interno/listings/[^/]+/import_candidate$") ? "/interno/listings/:id/import_candidate" : path;
     private static JsonNode Canonical(JsonNode node) => node switch { JsonObject obj => new JsonObject(obj.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => new KeyValuePair<string, JsonNode?>(x.Key, x.Value is null ? null : Canonical(x.Value)))), JsonArray arr => new JsonArray(arr.Select(x => x is null ? null : Canonical(x)).ToArray()), _ => node.DeepClone() };
     private static void ValidateCollections(JsonObject data)
     {

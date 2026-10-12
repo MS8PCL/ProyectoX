@@ -41,6 +41,12 @@ try
     var request = Request("/interno/listings/listing/import_candidate", body, 1);
     var result = await api.HandleAsync(request, default);
     Check(result["candidateProfileId"]!.GetValue<string>() == "original-id", "profile id, not user id");
+    var audit = (await store.ReadAsync()).Data["audit_log"]!.AsArray().OfType<JsonObject>().Last();
+    Check(audit["actorUserId"]!.GetValue<string>() == Hash(Encoding.UTF8.GetBytes(staff.Id)), "audit pseudonymises the Windows identity like LegacyApi");
+    Check(!audit.ToJsonString().Contains(staff.Id, StringComparison.Ordinal), "no raw Windows identity in the audit");
+    Check(audit["action"]!.GetValue<string>() == "POST /interno/listings/:id/import_candidate", "normalised audit route");
+    Check(audit["timestamp"]?.GetValue<string>() == audit["at"]!.GetValue<string>() && audit["user"]!.GetValue<string>() == staff.DisplayName, "audit page fields present");
+    Check(audit["entity"]!.GetValue<string>() == "/interno/listings/:id/import_candidate" && audit["actorType"]!.GetValue<string>() == "windows", "entity and actor type");
     var appId = result["applicationId"]!.GetValue<string>();
     var after = await store.ReadAsync();
     Check(after.Revision == 2 && after.Data["applications"]!.AsArray().Count == 1, "atomic commit");

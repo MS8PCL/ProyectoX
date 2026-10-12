@@ -9,6 +9,7 @@ import {
 } from './desktopBridge.js'
 import { encodeDesktopForm, DESKTOP_MAX_FORM_BYTES } from './desktopApi.js'
 import { useAuthStore } from '../stores/auth.js'
+import { useAppStore } from '../stores/app.js'
 
 const originalFetch = globalThis.fetch
 const originalWindow = globalThis.window
@@ -578,5 +579,31 @@ test('document and mail actions wait for the Windows dialog instead of 30 s', as
     desktopRequest('getState').catch(() => {})
   } finally { globalThis.setTimeout = realSetTimeout }
   assert.deepEqual(timers, [10 * 60_000, DESKTOP_TIMEOUT_MS])
+})
+
+test('editing and deleting an offer go through the host and refresh the shared list', async () => {
+  globalThis.localStorage ??= { getItem: () => null, setItem() {}, removeItem() {} }
+  await seed(5)
+  const app = useAppStore()
+  const listing = { id: 'l1', kind: 'ett', title: 'Técnico', company: 'Pharmamar', location: 'Madrid', pay: '', tags: [], desc: 'x' }
+  app.state = { listings: [listing] }
+  const edited = app.updateListingServer('l1', { ...listing, title: 'Técnico de laboratorio', tags: 'GMP, QC' })
+  const patch = await posted()
+  assert.equal(patch.payload.method, 'PATCH')
+  assert.equal(patch.payload.path, '/listings/l1')
+  assert.deepEqual(patch.payload.body, { kind: 'ett', title: 'Técnico de laboratorio', company: 'Pharmamar', location: 'Madrid', pay: '', tags: ['GMP', 'QC'], desc: 'x' })
+  bridge.reply(patch, { ok: true, item: { ...listing, title: 'Técnico de laboratorio' }, __desktop: metadata(6) })
+  const refresh = await posted()
+  assert.equal(refresh.payload.path, '/listings')
+  bridge.reply(refresh, { ok: true, items: [{ ...listing, title: 'Técnico de laboratorio' }], __desktop: metadata(6) })
+  await edited
+  assert.equal(app.state.listings.find((l) => l.id === 'l1').title, 'Técnico de laboratorio')
+
+  const removal = app.deleteListingServer('l1')
+  const del = await posted()
+  assert.equal(del.payload.method, 'DELETE')
+  bridge.reply(del, null, { code: 'reference_conflict', message: 'La oferta tiene candidaturas asociadas.' })
+  await assert.rejects(removal, /candidaturas asociadas/)
+  assert.ok(app.state.listings.some((l) => l.id === 'l1'), 'a rejected delete keeps the offer listed')
 })
 

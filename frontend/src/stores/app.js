@@ -441,6 +441,27 @@ export const useAppStore = defineStore("app", {
       return l;
     },
 
+    // Edits and deletes are confirmed by the host first; the shared list is then re-read, so
+    // a rejected change (conflict, offer with applications, read-only) never shows as done.
+    async updateListingServer(listingId, partial) {
+      const body = {
+        kind: normalizeListingKind(partial.kind),
+        title: String(partial.title || "").trim(),
+        company: String(partial.company || "").trim(),
+        location: String(partial.location || "").trim(),
+        pay: String(partial.pay || "").trim(),
+        tags: Array.isArray(partial.tags)
+          ? partial.tags.map(String)
+          : String(partial.tags || "").split(",").map((s) => s.trim()).filter(Boolean),
+        desc: String(partial.desc || ""),
+      };
+      await api(`/listings/${encodeURIComponent(listingId)}`, { method: "PATCH", body: JSON.stringify(body) });
+      await this.refreshListingsFromServer();
+    },
+    async deleteListingServer(listingId) {
+      await api(`/listings/${encodeURIComponent(listingId)}`, { method: "DELETE" });
+      await this.refreshListingsFromServer();
+    },
     async refreshListingsFromServer() {
       const res = await api("/listings");
       if (isDesktopMode() && !Array.isArray(res?.items)) {

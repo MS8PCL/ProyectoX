@@ -615,6 +615,7 @@ import { useRoute } from 'vue-router'
 import { api, apiForm, desktopRequest, isDesktop } from '../lib/api.js'
 import { t } from '../lib/i18n.js'
 import { useAuthStore } from '../stores/auth.js'
+import { useAppStore } from '../stores/app.js'
 import ModalShell from '../components/ModalShell.vue'
 import ComboBox from '../components/ComboBox.vue'
 import { ChevronDown, ChevronUp, Trash2, Upload, Download, Plus, X, GripVertical, Mail, Filter } from 'lucide-vue-next'
@@ -1640,12 +1641,18 @@ async function onDrop(listingId, stage) {
   if (drag.listingId !== listingId) return
   if (drag.fromStage === stage) return onDragEnd()
   const appId = drag.appId
-  await api(`/company/applications/${encodeURIComponent(appId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ stage }),
-  })
-  await loadApplications(listingId)
-  onDragEnd()
+  try {
+    await api(`/company/applications/${encodeURIComponent(appId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ stage }),
+    })
+  } catch (e) {
+    // A conflict or read-only store must not look like the card just snapped back.
+    useAppStore().toast = { kind: 'err', text: `No se pudo mover la candidatura: ${e?.message || e}` }
+  } finally {
+    await loadApplications(listingId).catch(() => {})
+    onDragEnd()
+  }
 
 
 }

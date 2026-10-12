@@ -173,6 +173,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { t } from '../lib/i18n.js'
 import { api, apiAllPages, isDesktop } from '../lib/api.js'
 import { isPipelineListing } from '../lib/listingKinds.js'
+import { candidateDisplayName } from '../lib/candidateName.js'
 import { useAuthStore } from '../stores/auth.js'
 import { downloadCsv } from '../lib/storage.js'
 import { FileText, FileSpreadsheet, Download, ClipboardList } from 'lucide-vue-next'
@@ -278,9 +279,7 @@ const metrics = computed(() => {
 })
 
 function fullNameFromProfile(p) {
-  const fn = String(p?.firstName || '').trim()
-  const ln = String(p?.lastName || '').trim()
-  return [fn, ln].filter(Boolean).join(' ').trim()
+  return candidateDisplayName(p)
 }
 
 function exportCsv() {

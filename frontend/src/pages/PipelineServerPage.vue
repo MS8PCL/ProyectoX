@@ -299,7 +299,7 @@
         <div v-if="candidateModal.tab==='datos'" class="stack gap-8">
           <div class="card">
             <div class="font-bold">{{ t('pipeline.data') }}</div>
-            <div class="muted text-sm mt-4">{{ candidateModal.profile?.firstName || '—' }} {{ candidateModal.profile?.lastName || '' }}</div>
+            <div class="muted text-sm mt-4">{{ candidateDisplayName(candidateModal.profile) || '—' }}</div>
             <div class="muted text-sm mt-4">{{ candidateModal.profile?.email || '—' }}</div>
             <div class="muted text-sm mt-4">{{ t('pipeline.fieldBirthDate') }}: {{ fmtDate(candidateModal.application?.birthDate) || '—' }}</div>
             <div class="muted text-sm mt-8">{{ t('pipeline.fieldCoverLetter') }}</div>
@@ -622,6 +622,7 @@ import { t } from '../lib/i18n.js'
 import { useAuthStore } from '../stores/auth.js'
 import { useAppStore } from '../stores/app.js'
 import { isPipelineListing } from '../lib/listingKinds.js'
+import { candidateDisplayName } from '../lib/candidateName.js'
 import ModalShell from '../components/ModalShell.vue'
 import ComboBox from '../components/ComboBox.vue'
 import { ChevronDown, ChevronUp, Trash2, Upload, Download, Plus, X, GripVertical, Mail, Filter } from 'lucide-vue-next'
@@ -1289,10 +1290,7 @@ function appsByStage(listingId) {
 }
 
 function fullName(p) {
-  const fn = String(p?.firstName || '').trim()
-  const ln = String(p?.lastName || '').trim()
-  const both = [fn, ln].filter(Boolean).join(' ').trim()
-  return both
+  return candidateDisplayName(p)
 }
 
 function candName(app) {

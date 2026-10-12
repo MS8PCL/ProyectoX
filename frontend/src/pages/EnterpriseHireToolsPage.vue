@@ -253,7 +253,8 @@ onMounted(() => {
   left: 0;
   right: 0;
   z-index: 20;
-  background: var(--card);
+  /* --card is translucent; the list must hide the fields underneath, like ComboBox. */
+  background: var(--bg);
   border: 1px solid var(--line);
   border-top: none;
   max-height: 200px;

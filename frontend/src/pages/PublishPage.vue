@@ -317,8 +317,9 @@ async function onSubmit() {
   let l
   try {
     l = await app.createListingServer(form)
-  } catch {
-    app.toast = { kind: 'info', text: t('publish.publishError') }
+  } catch (e) {
+    // The host's reason (read-only store, conflict, missing field) is what the user can act on.
+    app.toast = { kind: 'info', text: e?.message ? `${t('publish.publishError')} (${e.message})` : t('publish.publishError') }
     return
   }
 

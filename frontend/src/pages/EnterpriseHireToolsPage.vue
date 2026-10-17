@@ -202,9 +202,19 @@ function resetForm() {
 }
 
 async function submitForm() {
-  saving.value = true
   error.value = ''
   toast.value = ''
+  // Name every missing field instead of the host's first technical message ("departmentId debe…").
+  const missing = [
+    [form.value.firstName, 'hireTools.firstName'], [form.value.lastName, 'hireTools.lastName'], [form.value.email, 'hireTools.email'],
+    [selectedDept.value, 'hireTools.department'], [selectedJob.value, 'hireTools.jobTitle'],
+    [form.value.costCenter, 'hireTools.costCenter'], [form.value.startDate, 'hireTools.startDate'],
+  ].filter(([value]) => !(typeof value === 'string' ? value.trim() : value)).map(([, key]) => t(key))
+  if (missing.length) {
+    error.value = `${t('hireTools.missingFields')}: ${missing.join(', ')}`
+    return
+  }
+  saving.value = true
   lastResponse.value = null
 
   try {
@@ -253,7 +263,8 @@ onMounted(() => {
   left: 0;
   right: 0;
   z-index: 20;
-  background: var(--card);
+  /* --card is translucent; the list must hide the fields underneath, like ComboBox. */
+  background: var(--bg);
   border: 1px solid var(--line);
   border-top: none;
   max-height: 200px;

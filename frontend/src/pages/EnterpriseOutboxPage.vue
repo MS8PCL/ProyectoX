@@ -46,6 +46,13 @@
               <div style="font-weight: 650">{{ it.kind }}</div>
               <div class="muted mono">{{ it.entity_type }}:{{ it.entity_id }} · status={{ it.status }}</div>
               <div class="muted mono" style="font-size: 11px">idem={{ it.idempotency_key }}</div>
+              <!-- IT processes the onboarding by hand, so it needs the snapshot, not just ids. -->
+              <dl v-if="hireDetails(it).length" class="outbox-details">
+                <template v-for="[label, value] in hireDetails(it)" :key="label">
+                  <dt class="muted">{{ label }}</dt>
+                  <dd>{{ value }}</dd>
+                </template>
+              </dl>
             </div>
             <div class="row" style="gap: 8px">
               <button
@@ -74,6 +81,27 @@ const items = ref([])
 const loading = ref(false)
 const error = ref('')
 const markingId = ref(null)
+
+function hireDetails(it) {
+  const blob = it?.export_blob || {}
+  const hire = blob.hire_profile || {}
+  const candidate = blob.candidate || {}
+  const name = candidate.fullName || candidate.name || [candidate.firstName, candidate.lastName].filter(Boolean).join(' ')
+  const start = hire.startDate ? new Date(hire.startDate) : null
+  const manager = [hire.managerName, hire.managerEmail].filter(Boolean).join(' · ')
+  return [
+    [t('outbox.detailCandidate'), [name, candidate.email].filter(Boolean).join(' · ')],
+    [t('outbox.detailListing'), blob.listing?.title],
+    [t('outbox.detailDepartment'), blob.department?.name],
+    [t('outbox.detailJobTitle'), blob.jobTitle?.name],
+    [t('outbox.detailStartDate'), start && !Number.isNaN(start.getTime()) ? start.toLocaleDateString('es-ES', { timeZone: 'UTC' }) : ''],
+    [t('outbox.detailCostCenter'), hire.costCenter],
+    [t('outbox.detailManager'), manager],
+    [t('outbox.detailAccess'), hire.accessProfileId],
+    [t('outbox.detailHardware'), hire.hardwareProfile],
+    [t('outbox.detailNotes'), hire.notesIT],
+  ].filter(([, value]) => value)
+}
 
 async function load() {
   loading.value = true
@@ -122,6 +150,11 @@ watch(status, () => { load() })
 
 onMounted(load)
 </script>
+
+<style>
+.outbox-details { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 8px 0 0; font-size: 13px; }
+.outbox-details dd { margin: 0; }
+</style>
 
 <style scoped>
 .stack { display: grid; gap: 16px; }

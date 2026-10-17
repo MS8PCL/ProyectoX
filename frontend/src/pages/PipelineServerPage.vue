@@ -5,7 +5,7 @@
       <div class="row justify-between items-center">
         <div>
           <h2 class="text-lg font-bold" style="margin: 0">{{ t('pipeline.title') }}</h2>
-          <p class="muted text-sm mt-4">{{ t('pipeline.subtitle') }}</p>
+          <p class="muted text-sm mt-4">{{ isDesktop() ? t('pipeline.subtitleShared') : t('pipeline.subtitle') }}</p>
         </div>
         <div class="row items-center gap-8">
           <span class="badge">{{ activeFilterCount ? `${filteredTotalCandidates} de ${totalCandidates} ${t('pipeline.candidates')}` : `${totalCandidates} ${t('pipeline.candidates')}` }}</span>
@@ -14,6 +14,7 @@
     </div>
 
     <div v-if="documentActionError" class="card muted" role="alert">{{ documentActionError }}</div>
+    <div v-if="loadError" class="card" role="alert" style="border-color: var(--color-danger)">{{ t('pipeline.loadError') }}: {{ loadError }}</div>
 
         <div v-if="!['admin','rrhh','it'].includes(auth.user?.role)" class="card muted">
       {{ t('pipeline.internalOnly') }}
@@ -135,7 +136,7 @@
     </div>
 
     <div class="stack">
-      <div v-if="!companyListings.length" class="card muted">{{ t('pipeline.empty') }}</div>
+      <div v-if="!companyListings.length && !loadError" class="card muted">{{ t('pipeline.empty') }}</div>
 
       <!-- Accordion per listing -->
       <div v-for="l in companyListings" :key="l.id" class="card">
@@ -261,33 +262,11 @@
             </div>
           </div>
 
-          <div class="muted text-sm mt-16">* Datos de PocketBase (multi-sesión)</div>
+          <div v-if="!isDesktop()" class="muted text-sm mt-16">* Datos de PocketBase (multi-sesión)</div>
         </div>
               </div>
             </div>
             </div>
-
-            <!-- Delete confirm modal -->
-    <ModalShell v-if="deleteConfirm.open" @close="closeDeleteConfirm">
-      <template #title>{{ t('pipeline.deleteConfirm') }}</template>
-      <div class="stack gap-8">
-        <div class="card">
-          <div class="font-bold">Confirmación</div>
-          <p class="muted text-sm mt-4">
-            Esto eliminará la candidatura y sus datos asociados (tokens y profile_imports). No se puede deshacer.
-          </p>
-        </div>
-        <div class="row gap-8 flex-wrap">
-          <button class="btn btn-ghost" type="button" @click="closeDeleteConfirm" :disabled="deleteConfirm.loading">{{ t('pipeline.cancel') }}</button>
-          <button class="btn btn-danger" type="button" @click="confirmHardDelete" :disabled="deleteConfirm.loading">
-            {{ deleteConfirm.loading ? t('pipeline.deleting') : t('pipeline.confirm') }}
-          </button>
-        </div>
-        <div v-if="deleteConfirm.error" class="card" style="border-color: color-mix(in oklab, var(--color-danger) 50%, var(--color-border))">
-          <code class="font-mono text-sm">{{ deleteConfirm.error }}</code>
-        </div>
-      </div>
-    </ModalShell>
 
     <!-- Candidate modal -->
     <ModalShell v-if="candidateModal.open" @close="closeCandidateModal">
@@ -295,7 +274,8 @@
         Candidatura — {{ fullName(candidateModal.profile) || candidateModal.profile?.email || candidateModal.candidateUserId || '—' }}
       </template>
 
-      <div class="row justify-end items-center gap-8 mb-8">
+      <!-- Public application links need the web service; desktop imports internally instead. -->
+      <div v-if="!isDesktop()" class="row justify-end items-center gap-8 mb-8">
         <code class="muted text-sm">
           <span v-if="candidateModal.loadingTokens">link: cargando…</span>
           <span v-else-if="latestApplyToken">link: {{ tokenStatus(latestApplyToken) }} · exp={{ fmtDate(latestApplyToken.expiresAt) || '—' }}</span>
@@ -319,10 +299,10 @@
         <div v-if="candidateModal.tab==='datos'" class="stack gap-8">
           <div class="card">
             <div class="font-bold">{{ t('pipeline.data') }}</div>
-            <div class="muted text-sm mt-4">{{ candidateModal.profile?.firstName || '—' }} {{ candidateModal.profile?.lastName || '' }}</div>
+            <div class="muted text-sm mt-4">{{ candidateDisplayName(candidateModal.profile) || '—' }}</div>
             <div class="muted text-sm mt-4">{{ candidateModal.profile?.email || '—' }}</div>
-            <div class="muted text-sm mt-4">birthDate={{ fmtDate(candidateModal.application?.birthDate) || '—' }}</div>
-            <div class="muted text-sm mt-8">{{ t('pipeline.coverLetter') }}</div>
+            <div class="muted text-sm mt-4">{{ t('pipeline.fieldBirthDate') }}: {{ fmtDate(candidateModal.application?.birthDate) || '—' }}</div>
+            <div class="muted text-sm mt-8">{{ t('pipeline.fieldCoverLetter') }}</div>
             <div style="white-space: pre-wrap">{{ candidateModal.application?.coverLetter || '—' }}</div>
           </div>
           <div class="row gap-8 flex-wrap">
@@ -395,14 +375,36 @@
       </div>
     </ModalShell>
 
+    <!-- Delete confirm modal: after the candidate modal, which opens it, so it stacks on top. -->
+    <ModalShell v-if="deleteConfirm.open" @close="closeDeleteConfirm">
+      <template #title>{{ t('pipeline.deleteConfirm') }}</template>
+      <div class="stack gap-8">
+        <div class="card">
+          <div class="font-bold">Confirmación</div>
+          <p class="muted text-sm mt-4">
+            Esto eliminará la candidatura y sus datos asociados (tokens y profile_imports). No se puede deshacer.
+          </p>
+        </div>
+        <div class="row gap-8 flex-wrap">
+          <button class="btn btn-ghost" type="button" @click="closeDeleteConfirm" :disabled="deleteConfirm.loading">{{ t('pipeline.cancel') }}</button>
+          <button class="btn btn-danger" type="button" @click="confirmHardDelete" :disabled="deleteConfirm.loading">
+            {{ deleteConfirm.loading ? t('pipeline.deleting') : t('pipeline.confirm') }}
+          </button>
+        </div>
+        <div v-if="deleteConfirm.error" class="card" style="border-color: color-mix(in oklab, var(--color-danger) 50%, var(--color-border))">
+          <code class="font-mono text-sm">{{ deleteConfirm.error }}</code>
+        </div>
+      </div>
+    </ModalShell>
+
     <!-- Import modal -->
     <ModalShell v-if="importModal.open" @close="closeImportModal">
-      <template #title>{{ t('pipeline.importTitle') }}</template>
+      <template #title>{{ isDesktop() ? t('pipeline.importOptionalTitle') : t('pipeline.importTitle') }}</template>
       <div class="stack gap-8">
         <div class="card">
           <div class="font-bold">{{ t('pipeline.importPreviewTitle') }}</div>
           <p class="muted text-sm mt-4">
-            {{ t('pipeline.importDesc') }}
+            {{ isDesktop() ? t('pipeline.importOptionalDesc') : t('pipeline.importDesc') }}
           </p>
         </div>
 
@@ -415,7 +417,7 @@
             <label class="btn btn-ghost btn-sm cursor-pointer">
               <Upload :size="14" />
               {{ t('pipeline.uploadCvs') }}
-              <input class="sr-only" type="file" multiple accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @change="onPickImportCvs" />
+              <input class="sr-only" type="file" multiple :accept="isDesktop() ? undefined : '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'" @change="onPickImportCvs" />
             </label>
             <button class="btn btn-ghost btn-sm" type="button" @click="toImportPreview" :disabled="!importModal.rows.length">Preview</button>
           </div>
@@ -428,36 +430,35 @@
               </div>
               <div class="grid-2 mt-8">
                 <div class="stack gap-4">
-                  <label class="muted text-sm font-semibold">{{ t('pipeline.firstName') }}</label>
-                  <input class="input" v-model="r.firstName" maxlength="80" required />
+                  <label class="muted text-sm font-semibold">{{ t('pipeline.fieldFirstName') }}</label>
+                  <input class="input" v-model="r.firstName" maxlength="80" />
                 </div>
                 <div class="stack gap-4">
-                  <label class="muted text-sm font-semibold">{{ t('pipeline.lastName') }}</label>
-                  <input class="input" v-model="r.lastName" maxlength="120" required />
+                  <label class="muted text-sm font-semibold">{{ t('pipeline.fieldLastName') }}</label>
+                  <input class="input" v-model="r.lastName" maxlength="120" />
                 </div>
                 <div class="stack gap-4">
-                  <label class="muted text-sm font-semibold">{{ t('pipeline.email') }}</label>
-                  <input class="input" type="email" v-model="r.email" maxlength="120" required />
+                  <label class="muted text-sm font-semibold">{{ t('pipeline.fieldEmail') }}</label>
+                  <input class="input" type="email" v-model="r.email" maxlength="120" />
                 </div>
                 <div class="stack gap-4">
-                  <label class="muted text-sm font-semibold">{{ t('pipeline.birthDate') }}</label>
-                  <input class="input" type="date" v-model="r.birthDate" required />
+                  <label class="muted text-sm font-semibold">{{ t('pipeline.fieldBirthDate') }}</label>
+                  <input class="input" type="date" v-model="r.birthDate" />
                 </div>
               </div>
               <div class="stack gap-4 mt-8">
-                <label class="muted text-sm font-semibold">coverLetter</label>
-                <textarea class="textarea" rows="3" v-model="r.coverLetter" maxlength="5000" required />
+                <label class="muted text-sm font-semibold">{{ t('pipeline.fieldCoverLetter') }}</label>
+                <textarea class="textarea" rows="3" v-model="r.coverLetter" maxlength="5000" />
               </div>
               <div class="grid-2 mt-8">
                 <div class="stack gap-4">
-                  <label class="muted text-sm font-semibold">{{ t('pipeline.cvRequired') }}</label>
+                  <label class="muted text-sm font-semibold">{{ isDesktop() ? t('pipeline.cvOptional') : t('pipeline.cvRequired') }}</label>
                   <input
                     class="input"
                     type="file"
                     :data-import="`cv-${idx}`"
-                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    :accept="isDesktop() ? undefined : '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'"
                     @change="(e)=>onPickImportCv(idx,e)"
-                    required
                   />
                   <div class="row gap-8 flex-wrap mt-4">
                     <button class="btn btn-ghost btn-sm" type="button" @click="attachDemoPdfAsCv(idx)">{{ t('pipeline.useDemoCv') }}</button>
@@ -472,7 +473,7 @@
                     type="file"
                     multiple
                     :data-import="`certs-${idx}`"
-                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    :accept="isDesktop() ? undefined : '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'"
                     @change="(e)=>onPickImportCerts(idx,e)"
                   />
                   <div class="row gap-8 flex-wrap mt-4">
@@ -480,6 +481,11 @@
                   </div>
                   <div class="muted text-sm mt-4">{{ (r.certs||[]).length ? r.certs.map(f=>f.name).join(', ') : '—' }}</div>
                 </div>
+              </div>
+              <div v-if="isDesktop()" class="stack gap-4 mt-8">
+                <label class="muted text-sm font-semibold">{{ t('pipeline.attachmentsOptional') }}</label>
+                <input class="input" type="file" multiple :data-import="`attachments-${idx}`" @change="(e)=>onPickImportAttachments(idx,e)" />
+                <div class="muted text-sm mt-4">{{ r.attachments.map(f=>f.name).join(', ') || '—' }}</div>
               </div>
             </div>
           </div>
@@ -493,21 +499,25 @@
           </div>
           <div class="stack gap-8">
             <div v-for="(p,idx) in importPreview" :key="idx" class="card" style="background: var(--color-surface-hover)">
-              <div class="font-bold">#{{ idx+1 }} — {{ p.firstName || '—' }} {{ p.lastName || '' }}</div>
-              <div class="muted text-sm mt-4">{{ p.email || '—' }} · birthDate={{ p.birthDate || '—' }}</div>
-              <div class="muted text-sm mt-4">cv={{ p.cvName || '—' }} · certs={{ p.certCount }}</div>
+              <div class="font-bold">#{{ idx+1 }} — {{ p.name }}</div>
+              <div class="muted text-sm mt-4">{{ p.email || '—' }} · {{ t('pipeline.fieldBirthDate') }}: {{ p.birthDate || '—' }}</div>
+              <div class="muted text-sm mt-4">CV: {{ p.cvName || '—' }} · {{ t('pipeline.certsOptional') }}: {{ p.certCount }}</div>
+              <div v-if="isDesktop()" class="muted text-sm mt-4">{{ t('pipeline.attachmentsOptional') }}: {{ p.attachmentNames || '—' }}</div>
               <div v-if="p.error" class="text-sm mt-4" style="color: var(--color-danger)">{{ p.error }}</div>
             </div>
           </div>
           <div class="row gap-8 flex-wrap">
-            <button class="btn btn-ghost" type="button" @click="importModal.step='edit'" :disabled="importModal.loading">{{ t('pipeline.back') }}</button>
-            <button class="btn btn-primary" type="button" @click="runImport" :disabled="importModal.loading || importPreviewHasErrors">
+            <button class="btn btn-ghost" type="button" @click="toImportEdit" :disabled="importModal.loading">{{ t('pipeline.back') }}</button>
+            <button class="btn btn-primary" type="button" @click="runImport" :disabled="importModal.loading || importPreviewHasErrors || importAllDone">
               {{ importModal.loading ? t('pipeline.importing') : t('pipeline.importDefinitive') }}
             </button>
           </div>
           <div v-if="importModal.results.length" class="card" style="background: var(--color-bg)">
-            <div class="muted text-sm">Resultados (JSON)</div>
-            <pre class="text-sm mt-8" style="white-space: pre-wrap; font-family: var(--font-mono)">{{ JSON.stringify(importModal.results, null, 2) }}</pre>
+            <div class="muted text-sm">{{ t('pipeline.importResults') }}</div>
+            <div v-for="(r, idx) in importModal.results" :key="idx" class="text-sm mt-8" :style="r.ok ? '' : 'color: var(--color-danger)'">
+              {{ r.ok ? '✓' : '×' }} {{ r.name || r.inputEmail || '' }}
+              <span class="muted">— {{ r.ok ? (r.res?.already ? 'ya estaba en la oferta; documentos añadidos a su candidatura' : 'importado') : r.error }}</span>
+            </div>
           </div>
           <div v-if="importModal.error" class="card" style="border-color: color-mix(in oklab, var(--color-danger) 50%, var(--color-border))">
             <code class="text-sm">{{ importModal.error }}</code>
@@ -615,6 +625,10 @@ import { useRoute } from 'vue-router'
 import { api, apiForm, desktopRequest, isDesktop } from '../lib/api.js'
 import { t } from '../lib/i18n.js'
 import { useAuthStore } from '../stores/auth.js'
+import { useAppStore } from '../stores/app.js'
+import { isPipelineListing } from '../lib/listingKinds.js'
+import { candidateDisplayName } from '../lib/candidateName.js'
+import { validateCandidateImportRow, buildCandidateImportForm } from '../lib/candidateImport.js'
 import ModalShell from '../components/ModalShell.vue'
 import ComboBox from '../components/ComboBox.vue'
 import { ChevronDown, ChevronUp, Trash2, Upload, Download, Plus, X, GripVertical, Mail, Filter } from 'lucide-vue-next'
@@ -912,55 +926,24 @@ const importModal = reactive({
   results: [],
 })
 
-const importPreview = computed(() => {
-  return (importModal.rows || []).map((r) => {
-    const firstName = String(r.firstName || '').trim()
-    const lastName = String(r.lastName || '').trim()
-    const email = String(r.email || '').trim()
-    const birthDate = String(r.birthDate || '').trim()
-    const coverLetter = String(r.coverLetter || '').trim()
-    const cv = r.cv || null
-    const certs = Array.isArray(r.certs) ? r.certs : []
-    const allowed = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    ]
-    for (const f of certs) {
-      if (f && typeof f.size === 'number' && f.size > 50 * 1024 * 1024) error = error || 'Certificado supera 50MB'
-      if (f && f.type && !allowed.includes(String(f.type))) error = error || 'Certificado: tipo no permitido'
-    }
-
-    let error = ''
-    if (!firstName) error = error || 'Falta firstName'
-    if (!lastName) error = error || 'Falta lastName'
-    if (!email) error = error || 'Falta email'
-    if (!birthDate) error = error || 'Falta birthDate'
-    if (!coverLetter) error = error || 'Falta coverLetter'
-    if (!cv) error = error || 'Falta CV'
-    if (cv && typeof cv.size === 'number' && cv.size > 50 * 1024 * 1024) error = error || 'CV supera 50MB'
-    if (cv && cv.type && ![
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    ].includes(String(cv.type))) error = error || 'CV: tipo no permitido'
-
-    return {
-      firstName,
-      lastName,
-      email,
-      birthDate,
-      coverLetter,
-      cvName: cv?.name || '',
-      certCount: certs.length,
-      error,
-    }
-  })
-})
+const importPreview = computed(() => importModal.rows.map((row) => {
+  const validated = validateCandidateImportRow(row, new Date(), !isDesktop())
+  return {
+    ...validated,
+    name: [validated.firstName, validated.lastName].filter(Boolean).join(' ') || t('pipeline.unnamedCandidate'),
+    cvName: validated.cv?.name || '',
+    certCount: validated.certs.length,
+    attachmentNames: validated.attachments.map((file) => file.name).join(', '),
+    error: validated.errorCode ? t(validated.errorCode) : '',
+  }
+}))
 
 const importPreviewHasErrors = computed(() => importPreview.value.some((p) => !!p.error))
+// Imported rows are never sent again: a second click would attach another copy of the CV.
+const importAllDone = computed(() => importModal.rows.length > 0 && importModal.rows.every((r) => r.imported))
 
 function openImportModal(listingId) {
+  if (importModal.loading) return
   importModal.open = true
   importModal.step = 'edit'
   importModal.listingId = String(listingId || '')
@@ -972,6 +955,7 @@ function openImportModal(listingId) {
 }
 
 function closeImportModal() {
+  if (importModal.loading) return
   importModal.open = false
   importModal.step = 'edit'
   importModal.listingId = ''
@@ -982,7 +966,7 @@ function closeImportModal() {
 }
 
 function addImportRow(prefill = {}) {
-  if (importModal.rows.length >= 10) return
+  if (importModal.loading || importModal.rows.length >= 10) return
   importModal.rows.push({
     firstName: prefill.firstName || '',
     lastName: prefill.lastName || '',
@@ -991,10 +975,12 @@ function addImportRow(prefill = {}) {
     coverLetter: prefill.coverLetter || '',
     cv: prefill.cv || null,
     certs: prefill.certs || [],
+    attachments: prefill.attachments || [],
   })
 }
 
 function removeImportRow(idx) {
+  if (importModal.loading) return
   importModal.rows.splice(idx, 1)
 }
 
@@ -1009,6 +995,7 @@ function parseNameFromFilename(name) {
 }
 
 function onPickImportCvs(ev) {
+  if (importModal.loading) return
   const files = Array.from(ev?.target?.files || [])
   ev.target.value = ''
   for (const f of files) {
@@ -1018,12 +1005,13 @@ function onPickImportCvs(ev) {
       firstName: parsed.firstName,
       lastName: parsed.lastName,
       cv: f,
-      coverLetter: 'Import interno (FASE 5).',
+      coverLetter: '',
     })
   }
 }
 
 function onPickImportCv(idx, ev) {
+  if (importModal.loading) return
   const f = ev?.target?.files?.[0] || null
   importModal.rows[idx].cv = f
   if (f?.name) {
@@ -1034,11 +1022,23 @@ function onPickImportCv(idx, ev) {
 }
 
 function onPickImportCerts(idx, ev) {
+  if (importModal.loading) return
   const list = Array.from(ev?.target?.files || [])
   importModal.rows[idx].certs = list
 }
 
+function onPickImportAttachments(idx, ev) {
+  if (importModal.loading) return
+  importModal.rows[idx].attachments = Array.from(ev?.target?.files || [])
+}
+
+function toImportEdit() {
+  if (importModal.loading) return
+  importModal.step = 'edit'
+}
+
 function toImportPreview() {
+  if (importModal.loading) return
   importModal.error = ''
   importModal.step = 'preview'
 }
@@ -1050,9 +1050,12 @@ async function fetchDemoPdfBlob() {
 }
 
 async function attachDemoPdfAsCv(idx, filename) {
+  if (importModal.loading) return
+  const row = importModal.rows[idx]
   importModal.error = ''
   try {
     const blob = await fetchDemoPdfBlob()
+    if (importModal.loading || importModal.rows[idx] !== row) return
     const name = String(filename || 'demo-cv.pdf')
     const file = new File([blob], name, { type: 'application/pdf' })
     importModal.rows[idx].cv = file
@@ -1065,9 +1068,12 @@ async function attachDemoPdfAsCv(idx, filename) {
 }
 
 async function attachDemoPdfAsCert(idx, filename) {
+  if (importModal.loading) return
+  const row = importModal.rows[idx]
   importModal.error = ''
   try {
     const blob = await fetchDemoPdfBlob()
+    if (importModal.loading || importModal.rows[idx] !== row) return
     const name = String(filename || 'certificado-demo.pdf')
     const file = new File([blob], name, { type: 'application/pdf' })
     const list = Array.isArray(importModal.rows[idx].certs) ? importModal.rows[idx].certs : []
@@ -1077,44 +1083,32 @@ async function attachDemoPdfAsCert(idx, filename) {
   }
 }
 
-function safeCvFilename(r) {
-  const fn = String(r.firstName || '').trim().replace(/\s+/g, '+')
-  const ln = String(r.lastName || '').trim().replace(/\s+/g, '+')
-  const orig = String(r.cv?.name || 'cv.pdf')
-  const ext = orig.includes('.') ? orig.split('.').pop() : 'pdf'
-  const base = `${fn}+${ln}`.replace(/[^a-zA-Z0-9+_-]+/g, '+')
-  return `${base}.${ext}`
-}
 
 async function runImport() {
+  if (importModal.loading || importAllDone.value) return
   importModal.error = ''
   importModal.results = []
-  if (importPreviewHasErrors.value) return (importModal.error = 'Hay errores en el preview.')
-  if (!importModal.listingId) return (importModal.error = 'Falta listingId.')
+  if (importPreviewHasErrors.value) return (importModal.error = t('pipeline.importPreviewErrors'))
+  if (!importModal.listingId) return (importModal.error = t('pipeline.importMissingListing'))
 
   importModal.loading = true
   try {
     for (const r of importModal.rows) {
-      const fd = new FormData()
-      fd.set('firstName', String(r.firstName || '').trim())
-      fd.set('lastName', String(r.lastName || '').trim())
-      fd.set('email', String(r.email || '').trim())
-      fd.set('birthDate', String(r.birthDate || '').trim())
-      fd.set('coverLetter', String(r.coverLetter || '').trim())
-      const cvName = safeCvFilename(r)
-      fd.set('cv', r.cv, cvName)
-      for (const f of r.certs || []) fd.append('certificates', f)
+      if (r.imported) continue
+      const fd = buildCandidateImportForm(r)
       const res = await apiForm(`/interno/listings/${encodeURIComponent(importModal.listingId)}/import_candidate`, fd)
-      importModal.results.push({ ok: true, inputEmail: r.email, res })
+      r.imported = true
+      importModal.results.push({ ok: true, inputEmail: r.email, name: `${r.firstName} ${r.lastName}`.trim() || t('pipeline.unnamedCandidate'), res })
       console.log('[import_candidate] ok', { inputEmail: r.email, res })
     }
-    await loadApplications(importModal.listingId)
     importModal.step = 'preview'
   } catch (e) {
-    importModal.error = String(e?.message || e)
+    importModal.error = e?.code?.startsWith('pipeline.') ? t(e.code) : String(e?.message || e)
     importModal.results.push({ ok: false, error: importModal.error })
     console.log('[import_candidate] error', importModal.error)
   } finally {
+    // Rows imported before a failure are already on the board.
+    await loadApplications(importModal.listingId).catch(() => {})
     importModal.loading = false
   }
 }
@@ -1159,12 +1153,21 @@ async function loadJobTitles(q) {
   }
 }
 
+// A failed read must not look like an empty store (or invite publishing): keep what was
+// shown, say it may be stale, and clear the notice on the next successful read.
+const loadError = ref('')
+
 async function loadListings() {
-  const res = await api('/listings')
-  listings.value = res.items || []
+  try {
+    const res = await api('/listings')
+    listings.value = res.items || []
+    loadError.value = ''
+  } catch (e) {
+    loadError.value = String(e?.message || e)
+  }
 }
 
-const companyListings = computed(() => (listings.value || []).filter((l) => l.kind === 'empleo'))
+const companyListings = computed(() => (listings.value || []).filter(isPipelineListing))
 
 function pickInitialOpen() {
   const q = route.query?.listingId
@@ -1173,6 +1176,26 @@ function pickInitialOpen() {
   if (exists) return qid
   return companyListings.value[0]?.id || ''
 }
+
+// Consume each query request only after its listing resolves. Polling never reopens it.
+let importQueryKey = ''
+let importQueryConsumed = false
+watch(
+  () => [route.query?.listingId, route.query?.import, companyListings.value, importModal.loading],
+  () => {
+    const qid = typeof route.query?.listingId === 'string' ? route.query.listingId : ''
+    const key = route.query?.import === '1' && qid ? qid : ''
+    if (key !== importQueryKey) {
+      importQueryKey = key
+      importQueryConsumed = false
+    }
+    if (!key || importQueryConsumed || importModal.loading || !companyListings.value.some((listing) => listing.id === qid)) return
+    importQueryConsumed = true
+    openListingId.value = qid
+    openImportModal(qid)
+  },
+  { immediate: true }
+)
 
 watch(
   () => [companyListings.value.length, route.query?.listingId],
@@ -1185,7 +1208,9 @@ watch(
   { immediate: true }
 )
 
-const autoRefresh = reactive({ timer: null, listingId: '', intervalMs: 3000 })
+// Each desktop read takes the shared store's exclusive file lock and parses the whole
+// state; polling every 3 s from several workstations starves writers on SMB.
+const autoRefresh = reactive({ timer: null, listingId: '', intervalMs: isDesktop() ? 15000 : 3000 })
 
 function stopAutoRefresh() {
   if (autoRefresh.timer) clearInterval(autoRefresh.timer)
@@ -1222,8 +1247,15 @@ async function loadApplications(listingId) {
   if (appsLoading[listingId]) return
   appsLoading[listingId] = true
   try {
-    const res = await api(`/company/listings/${encodeURIComponent(listingId)}/applications`)
+    let res
+    try {
+      res = await api(`/company/listings/${encodeURIComponent(listingId)}/applications`)
+    } catch (e) {
+      loadError.value = String(e?.message || e)
+      return
+    }
     appsByListing[listingId] = res.items || []
+    loadError.value = ''
     const missing = Array.from(
       new Set(
         (appsByListing[listingId] || [])
@@ -1259,10 +1291,7 @@ function appsByStage(listingId) {
 }
 
 function fullName(p) {
-  const fn = String(p?.firstName || '').trim()
-  const ln = String(p?.lastName || '').trim()
-  const both = [fn, ln].filter(Boolean).join(' ').trim()
-  return both
+  return candidateDisplayName(p)
 }
 
 function candName(app) {
@@ -1301,8 +1330,10 @@ async function loadDocs(applicationId) {
   try {
     const res = await api(`/interno/applications/${encodeURIComponent(applicationId)}/documents`)
     candidateModal.docs = res.items || []
-  } catch {
+  } catch (e) {
+    // "(sin CV)" would claim the candidate has no documents.
     candidateModal.docs = []
+    candidateModal.error = `${t('pipeline.docsLoadError')}: ${e?.message || e}`
   } finally {
     candidateModal.loadingDocs = false
   }
@@ -1323,6 +1354,7 @@ function tokenStatus(t) {
 }
 
 async function loadApplyTokens(applicationId) {
+  if (isDesktop()) return
   candidateModal.loadingTokens = true
   try {
     const res = await api(`/interno/applications/${encodeURIComponent(applicationId)}/apply_tokens`)
@@ -1433,9 +1465,7 @@ async function confirmHardDelete() {
   deleteConfirm.loading = true
   try {
     const lid = deleteConfirm.listingId
-    if (lid && Array.isArray(appsByListing[lid])) {
-      appsByListing[lid] = appsByListing[lid].filter((x) => x.id !== deleteConfirm.applicationId)
-    }
+    // Removed from the board only after the host confirms; a refusal keeps the card.
     await api(`/company/applications/${encodeURIComponent(deleteConfirm.applicationId)}`, { method: 'DELETE' })
     if (lid) await loadApplications(lid)
     if (candidateModal.open && candidateModal.applicationId === deleteConfirm.applicationId) closeCandidateModal()
@@ -1640,12 +1670,18 @@ async function onDrop(listingId, stage) {
   if (drag.listingId !== listingId) return
   if (drag.fromStage === stage) return onDragEnd()
   const appId = drag.appId
-  await api(`/company/applications/${encodeURIComponent(appId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ stage }),
-  })
-  await loadApplications(listingId)
-  onDragEnd()
+  try {
+    await api(`/company/applications/${encodeURIComponent(appId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ stage }),
+    })
+  } catch (e) {
+    // A conflict or read-only store must not look like the card just snapped back.
+    useAppStore().toast = { kind: 'err', text: `No se pudo mover la candidatura: ${e?.message || e}` }
+  } finally {
+    await loadApplications(listingId).catch(() => {})
+    onDragEnd()
+  }
 
 
 }
@@ -1667,17 +1703,23 @@ function notesPreview(notes) {
   return one.length > 60 ? one.slice(0, 60) + '…' : one
 }
 
-let notesTimer = null
+// One debounce per application: a shared timer dropped card A's note when card B was edited.
+const notesTimers = new Map()
 function setNotes(appId, val) {
   const listingId = openListingId.value
   if (!listingId) return
   const list = appsByListing[listingId] || []
   const row = list.find((x) => x.id === appId)
   if (row) row.notes = val
-  clearTimeout(notesTimer)
-  notesTimer = setTimeout(async () => {
-    await api(`/company/applications/${encodeURIComponent(appId)}`, { method: 'PATCH', body: JSON.stringify({ notes: val }) })
-  }, 400)
+  clearTimeout(notesTimers.get(appId))
+  notesTimers.set(appId, setTimeout(async () => {
+    notesTimers.delete(appId)
+    try {
+      await api(`/company/applications/${encodeURIComponent(appId)}`, { method: 'PATCH', body: JSON.stringify({ notes: val }) })
+    } catch (e) {
+      useAppStore().toast = { kind: 'err', text: `No se pudieron guardar las notas: ${e?.message || e}` }
+    }
+  }, 400))
 }
 
 onMounted(async () => {

@@ -1,7 +1,8 @@
 ﻿param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
-    [switch]$Publish
+    [switch]$Publish,
+    [switch]$Installer
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -25,4 +26,7 @@ if ($Publish) {
     if ($LASTEXITCODE -ne 0) { throw 'Ha fallado la publicación.' }
     Write-Host "Publicación framework-dependent: $output"
     Write-Host 'Requiere .NET Desktop Runtime 8 y WebView2 Runtime. Configure config.json junto al EXE antes de abrirlo.'
+}
+if ($Installer) {
+    & (Join-Path $PSScriptRoot 'build-installer.ps1')
 }

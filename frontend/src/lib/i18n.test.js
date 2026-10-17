@@ -96,9 +96,35 @@ test('literal scan excludes dynamic identifiers, properties and partial expressi
 })
 
 const addedExistingSectionKeys = new Set([
+  'pipeline.addCandidate', 'pipeline.importOptionalTitle', 'pipeline.importOptionalDesc',
+  'pipeline.cvOptional', 'pipeline.attachmentsOptional', 'pipeline.unnamedCandidate',
+  'pipeline.importInvalidEmail', 'pipeline.importInvalidBirthDate', 'pipeline.importTextTooLong',
+  'pipeline.importInvalidFile', 'pipeline.importTooManyFiles', 'pipeline.importFileTooLarge',
+  'pipeline.importTotalTooLarge', 'pipeline.importPreviewErrors', 'pipeline.importMissingListing',
+  'pipeline.importWebRequirements',
   'audit.subtitle', 'hireTools.submitting', 'rbac.subtitle', 'pipeline.skillsPlaceholder',
   'reports.subtitle', 'reports.reportType', 'reports.date', 'reports.action',
+  'pipeline.fieldFirstName', 'pipeline.fieldLastName', 'pipeline.fieldEmail', 'pipeline.fieldBirthDate',
+  'pipeline.fieldCoverLetter', 'pipeline.importResults', 'pipeline.subtitleShared',
+  'pipeline.loadError', 'pipeline.docsLoadError', 'reports.loadError',
+  'hireTools.missingFields', 'home.metricsError',
+  'publish.editOffer', 'publish.deleteOffer', 'publish.deleteOfferConfirm', 'publish.cancelEdit', 'publish.saveOffer', 'publish.offerUpdated', 'publish.offerDeleted',
+  'outbox.detailCandidate', 'outbox.detailListing', 'outbox.detailDepartment', 'outbox.detailJobTitle', 'outbox.detailStartDate',
+  'outbox.detailCostCenter', 'outbox.detailManager', 'outbox.detailAccess', 'outbox.detailHardware', 'outbox.detailNotes',
 ])
+
+test('new candidate import labels and dynamic validation codes exist directly in both languages', () => {
+  for (const locale of ['es', 'en']) {
+    setLocale(locale)
+    for (const key of addedExistingSectionKeys) {
+      if (!key.startsWith('pipeline.')) continue
+      const value = lookup(messages[locale], key)
+      assert.equal(typeof value, 'string', `${locale}: ${key}`)
+      assert.ok(value.trim(), `${locale}: ${key}`)
+      assert.equal(t(key), value)
+    }
+  }
+})
 
 function originalEntries(dictionary, prefix = '') {
   const entries = []

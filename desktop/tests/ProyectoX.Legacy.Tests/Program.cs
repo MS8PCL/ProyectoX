@@ -7,13 +7,18 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Empty store reads without seeds", Empty),
     ("Listing CRUD, normalized paths, object/string bodies", Listings),
     ("Receipts, canonical fingerprints, stale retry, UUID collision", Receipts),
+    ("Only the most recent receipts are kept", ReceiptTrim),
     ("Revision races and durable uncertain outcomes", Concurrency),
+    ("Stale edits apply only to records unchanged since the caller's revision", PerRecordConcurrency),
     ("Windows identity, staff ACL, readOnly and cancellation", Permissions),
     ("User-specific state never overwrites shared collections", State),
+    ("Own preferences save on a stale revision; shared writes still conflict", StalePreferences),
     ("Own profile and onboarding completeness", Profile),
     ("PocketBase candidate profile IDs, aliases and pipeline stages", Imported),
     ("Candidates/applications CRUD and reference conflicts", Applications),
+    ("Deleting an imported application removes its own imports", ImportedApplicationDelete),
     ("Atomic hire, outbox export and completion", Hire),
+    ("New stores serve official catalogs so IT onboarding works", SeededCatalogHire),
     ("Standalone hire-tools frontend shape", StandaloneHire),
     ("Catalog filters, audit pagination and real metrics", Reporting),
     ("Explicit unsupported operations and document dispatch", Unsupported),
@@ -75,10 +80,14 @@ static JsonObject HireBody(string application) => new()
 static async Task Empty()
 {
     using var f = new Fixture();
-    foreach (var path in new[] { "/listings", "/candidates", "/applications", "/departments", "/job_titles", "/enterprise/outbox", "/enterprise/catalog/items", "/enterprise/rbac/rules", "/enterprise/hire-profiles", "/enterprise/audit-log" })
+    foreach (var path in new[] { "/listings", "/candidates", "/applications", "/enterprise/outbox", "/enterprise/catalog/items", "/enterprise/rbac/rules", "/enterprise/hire-profiles", "/enterprise/audit-log" })
     {
         var r = await Get(f, path); Check(r["items"]!.AsArray().Count == 0); Check(Rev(r) == 0);
     }
+    // Only the official reference catalogs (backend/src/seeds) are served; reading writes nothing.
+    var departments = (await Get(f, "/interno/departments"))["items"]!.AsArray();
+    Check(departments.Count > 50 && departments.Any(x => Str(x!["name"]) == "RHIT - Information Technologies" && Str(x!["code"]) == "RHIT"));
+    Check(Str((await Get(f, "/interno/job_titles"))["items"]![0]!["name"]) == "GEN - General");
     Check((await Get(f, "/profile"))["profile"] is null);
     var state = (await Get(f, "/state"))["state"]!.AsObject();
         Check(state["listings"]!.AsArray().Count == 0 && state["candidates"]!.AsArray().Count == 0 && state["applications"]!.AsArray().Count == 0);
@@ -117,6 +126,19 @@ static async Task Receipts()
         var afterDeletion = await f.Api.HandleAsync(reorder, default);
         Check(afterDeletion["ok"]!.GetValue<bool>() && afterDeletion["item"] is null);
         Check(Rev(afterDeletion) == 2 && (await f.Store.ReadAsync()).Data["listings"]!.AsArray().Count == 0);
+}
+static async Task ReceiptTrim()
+{
+    using var f = new Fixture();
+    var seeded = await f.Store.ReadAsync();
+    var receipts = new JsonObject();
+    for (var i = 0; i < ProyectoX.Desktop.Receipts.Max; i++) receipts[Guid.NewGuid().ToString("D")] = new string('A', 64);
+    var oldest = receipts.First().Key;
+    seeded.Data["_operations"] = receipts;
+    await f.Store.CommitAsync(seeded.Revision, seeded.Data, "test");
+    var r = await Write(f, "/listings", "POST", Listing());
+    var kept = (await f.Store.ReadAsync()).Data["_operations"]!.AsObject();
+    Check(kept.Count == ProyectoX.Desktop.Receipts.Max && !kept.ContainsKey(oldest) && r["__desktop"]!["appliedOperationIds"]!.AsArray().Count == ProyectoX.Desktop.Receipts.Max);
 }
 static async Task Concurrency()
 {
@@ -210,6 +232,62 @@ static async Task Applications()
     await Write(f, "/candidates/" + c, "DELETE", new()); await Write(f, "/listings/" + l, "DELETE", new());
     Check((await f.Store.ReadAsync()).Data["applications"]!.AsArray().Count == 0);
 }
+static async Task ImportedApplicationDelete()
+{
+    using var f = new Fixture(); var (_, c, a) = await Setup(f);
+    var seeded = await f.Store.ReadAsync();
+    seeded.Data["profile_imports"] = new JsonArray(
+        new JsonObject { ["id"] = "imp-app", ["applicationId"] = a, ["userId"] = c, ["docType"] = "cv", ["documentId"] = "00000000-0000-0000-0000-000000000001" },
+        new JsonObject { ["id"] = "imp-own", ["userId"] = c, ["docType"] = "cv" });
+    await f.Store.CommitAsync(seeded.Revision, seeded.Data, "test");
+    await Write(f, "/company/applications/" + a, "DELETE", new());
+    var data = (await f.Store.ReadAsync()).Data;
+    Check(data["applications"]!.AsArray().Count == 0);
+    Check(data["profile_imports"]!.AsArray().Select(x => Str(x!["id"])).SequenceEqual(["imp-own"]));
+}
+static async Task SeededCatalogHire()
+{
+    using var f = new Fixture(); var (_, _, a) = await Setup(f);
+    var dep = Str((await Get(f, "/interno/departments?q=Business"))["items"]![0]!["id"]);
+    var job = Str((await Get(f, "/interno/job_titles"))["items"]![0]!["id"]);
+    var body = new JsonObject { ["applicationId"] = a, ["startDate"] = "2026-11-02", ["departmentId"] = dep, ["jobTitleId"] = job, ["costCenter"] = "CC1", ["managerEmail"] = "jefa@example.org", ["accessProfileId"] = "estandar" };
+    var r = await Write(f, "/interno/hire/enqueue_it_request", "POST", body);
+    Check(Str(r["outbox"]!["export_blob"]!["department"]!["name"]) == "BD - Business Development");
+    var data = (await f.Store.ReadAsync()).Data;
+    Check(data["departments"]!.AsArray().Count > 50, "the first write persists the official catalog");
+    data["departments"] = new JsonArray(new JsonObject { ["id"] = "own", ["name"] = "Own", ["isActive"] = true });
+    await f.Store.CommitAsync((await f.Store.ReadAsync()).Revision, data, "test");
+    Check((await Get(f, "/interno/departments"))["items"]!.AsArray().Count == 1, "an existing catalog is never replaced");
+}
+static async Task StalePreferences()
+{
+    using var f = new Fixture(); var (l, _, _) = await Setup(f);
+    var stale = (await f.Store.ReadAsync()).Revision;
+    await Write(f, "/listings/" + l, "PATCH", Obj("""{"location":"Bilbao"}"""));
+    var saved = await f.Api.HandleAsync(Request("/state", "PUT", Obj("""{"state":{"theme":"light","listings":[]}}"""), stale), default);
+    Check(Rev(saved) == stale + 2);
+    Check(Str((await Get(f, "/state"))["state"]!["theme"]) == "light");
+    Check(Str((await f.Store.ReadAsync()).Data["listings"]![0]!["location"]) == "Bilbao", "shared data untouched");
+    await Code("conflict", () => f.Api.HandleAsync(Request("/listings/" + l, "PATCH", Obj("""{"location":"Vigo"}"""), stale), default));
+    await Code("conflict", () => f.Api.HandleAsync(Request("/state", "PUT", Obj("""{"state":{"theme":"terminal"}}"""), stale), default));
+}
+static async Task PerRecordConcurrency()
+{
+    using var f = new Fixture(); var (l, _, a) = await Setup(f);
+    var c2 = Str((await Write(f, "/candidates", "POST", Obj("""{"fullName":"Grace Hopper","email":"grace@example.org"}""")))["item"]!["id"]);
+    var a2 = Str((await Write(f, "/applications", "POST", new JsonObject { ["listingId"] = l, ["candidateUserId"] = c2 }))["item"]!["id"]);
+    var stale = (await f.Store.ReadAsync()).Revision;
+    await Write(f, "/company/applications/" + a2, "PATCH", Obj("""{"notes":"Otro puesto"}"""));
+    var moved = await f.Api.HandleAsync(Request("/company/applications/" + a, "PATCH", Obj("""{"stage":"entrevista"}"""), stale), default);
+    Check(Str(moved["item"]!["stage"]) == "entrevista" && Rev(moved) == stale + 2, "an untouched record accepts a stale edit");
+    await Code("conflict", () => f.Api.HandleAsync(Request("/company/applications/" + a2, "PATCH", Obj("""{"notes":"Pisado"}"""), stale), default));
+    await Code("conflict", () => f.Api.HandleAsync(Request("/listings", "POST", Listing(), stale), default));
+    Check(Str((await f.Store.ReadAsync()).Data["applications"]!.AsArray().OfType<JsonObject>().Single(x => Str(x["id"]) == a2)["notes"]) == "Otro puesto");
+    var raw = await f.Store.ReadAsync();
+    raw.Data["applications"]!.AsArray().Add(new JsonObject { ["id"] = "unstamped", ["listingId"] = l, ["candidateUserId"] = c2, ["stage"] = "nuevo" });
+    await f.Store.CommitAsync(raw.Revision, raw.Data, "older host");
+    await Code("conflict", () => f.Api.HandleAsync(Request("/company/applications/unstamped", "PATCH", Obj("""{"notes":"x"}"""), raw.Revision), default));
+}
 static async Task Hire()
 {
     using var f = new Fixture(); var (_, _, a) = await Setup(f); await SeedCatalogs(f);
@@ -246,6 +324,14 @@ static async Task StandaloneHire()
     Check(Str(data["candidates"]![0]!["fullName"]) == "Grace Hopper");
         await Write(f, "/candidates/" + Str(data["candidates"]![0]!["id"]), "PATCH", Obj("""{"firstName":"Amazing Grace"}"""));
         Check(Str((await Get(f, "/candidates"))["items"]![0]!["fullName"]) == "Amazing Grace Hopper");
+    // A second request for the same person while the first is pending would be provisioned twice.
+    var again = Obj("""{"firstName":"Grace","lastName":"Hopper","email":"GRACE@example.org","departmentId":"dep-pb","jobTitleId":"job-pb","costCenter":"IT","startDate":"2026-11-02"}""");
+    await Code("reference_conflict", () => Write(f, "/enterprise/hire-profiles", "POST", again));
+    var outbox = (await Get(f, "/enterprise/outbox"))["items"]!.AsArray();
+    Check(outbox.Count == 1, "no duplicate pending request");
+    await Write(f, "/enterprise/outbox/" + Str(outbox[0]!["id"]) + "/complete", "POST", new());
+    var rehire = await Write(f, "/enterprise/hire-profiles", "POST", again);
+    Check(rehire["created"]!.GetValue<bool>() && (await Get(f, "/enterprise/outbox"))["items"]!.AsArray().Count == 2, "after completion a new onboarding is allowed");
 }
 static async Task Reporting()
 {

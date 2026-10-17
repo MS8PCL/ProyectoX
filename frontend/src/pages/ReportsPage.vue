@@ -57,7 +57,7 @@
             v-if="reportType === 'pipeline' || reportType === 'audit'"
             class="btn btn-primary btn-sm"
             type="button"
-            :disabled="!filteredData.length"
+            :disabled="!filteredData.length || !!loadError"
             @click="exportCsv"
           >
             <Download :size="14" />
@@ -67,6 +67,7 @@
             v-if="reportType === 'metrics'"
             class="btn btn-primary btn-sm"
             type="button"
+            :disabled="!!loadError"
             @click="exportMetrics"
           >
             <FileText :size="14" />
@@ -75,7 +76,8 @@
         </div>
       </div>
 
-      <div v-if="!filteredData.length" class="muted text-sm">{{ t('reports.noData') }}</div>
+      <div v-if="loadError" class="card" role="alert" style="border-color: var(--color-danger)">{{ t('reports.loadError') }}: {{ loadError }}</div>
+      <div v-else-if="!filteredData.length" class="muted text-sm">{{ t('reports.noData') }}</div>
 
       <!-- Pipeline table -->
       <div v-else-if="reportType === 'pipeline'" class="table-wrap">
@@ -169,7 +171,9 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { t } from '../lib/i18n.js'
-import { api } from '../lib/api.js'
+import { api, apiAllPages, isDesktop } from '../lib/api.js'
+import { isPipelineListing } from '../lib/listingKinds.js'
+import { candidateDisplayName } from '../lib/candidateName.js'
 import { useAuthStore } from '../stores/auth.js'
 import { downloadCsv } from '../lib/storage.js'
 import { FileText, FileSpreadsheet, Download, ClipboardList } from 'lucide-vue-next'
@@ -232,7 +236,8 @@ const pipelineData = computed(() => {
       rows.push({
         puesto: listing?.title || lid,
         empresa: listing?.company || '—',
-        etapa: a.stage || 'nuevo',
+        // The host keeps the original "hired" stage id; every other stage is already Spanish.
+        etapa: a.stage === 'hired' ? t('pipeline.hired') : a.stage || 'nuevo',
         candidato: fullNameFromProfile(p) || p?.email || cid || '—',
         email: p?.email || '—',
         createdAt: a.createdAt || a.created || '',
@@ -274,9 +279,7 @@ const metrics = computed(() => {
 })
 
 function fullNameFromProfile(p) {
-  const fn = String(p?.firstName || '').trim()
-  const ln = String(p?.lastName || '').trim()
-  return [fn, ln].filter(Boolean).join(' ').trim()
+  return candidateDisplayName(p)
 }
 
 function exportCsv() {
@@ -312,12 +315,19 @@ function exportMetrics() {
   ])
 }
 
+// An unreachable store must not produce an empty report that can be exported as if real.
+const loadError = ref('')
+function failLoad(e) {
+  loadError.value = String(e?.message || e)
+}
+
 async function loadListings() {
   try {
     const res = await api('/listings')
-    listings.value = (res.items || []).filter((l) => l.kind === 'empleo')
-  } catch {
+    listings.value = (res.items || []).filter(isPipelineListing)
+  } catch (e) {
     listings.value = []
+    failLoad(e)
   }
 }
 
@@ -342,24 +352,30 @@ async function loadApplications(listingId) {
         }
       })
     )
-  } catch {
+  } catch (e) {
     appsByListing[listingId] = []
+    failLoad(e)
   }
 }
 
 async function loadAuditLog() {
   try {
-    const res = await api('/enterprise/audit-log')
-    const raw = Array.isArray(res) ? res : res?.items || []
+    const raw = await apiAllPages('/enterprise/audit-log')
     auditLog.value = raw.map((e) => ({
       id: e.id || e.audit_id || `${Date.now()}_${Math.random()}`,
-      fecha: new Date(e.timestamp || e.created_at || e.createdAt || Date.now()).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      fecha: new Date(e.timestamp || e.at || e.created_at || e.createdAt || Date.now()).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
       accion: e.action || e.event || 'acción',
       detalle: e.details || e.description || e.detail || '—',
-      ts: e.timestamp || e.created_at || e.createdAt || new Date().toISOString(),
+      ts: e.timestamp || e.at || e.created_at || e.createdAt || new Date().toISOString(),
     }))
     return
-  } catch {
+  } catch (e) {
+    // Desktop has no local audit: an old browser copy would pass for the shared log.
+    if (isDesktop()) {
+      auditLog.value = []
+      failLoad(e)
+      return
+    }
   }
   try {
     const raw = localStorage.getItem('proyecto_x_audit_log')

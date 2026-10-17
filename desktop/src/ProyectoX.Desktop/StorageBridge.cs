@@ -145,6 +145,10 @@ internal sealed class StorageBridge(SharedStore store, bool readOnly)
             if (existing is null) entities.Add(entity);
             else entities[entities.IndexOf(existing)] = entity;
         }
+        // This path does not record per-record revisions (see EntityRevisions in LegacyApi):
+        // dropping the stamp makes the next stale edit of this record conflict, never overwrite.
+        if (data["_revisions"] is JsonObject stamps)
+            stamps.Remove(collection + "/" + (StringValue(payload["id"]) ?? StringValue((payload["entity"] as JsonObject)?["id"]) ?? ""));
         ((JsonObject)data["_operations"]!)[operationId] = fingerprint;
         try
         {

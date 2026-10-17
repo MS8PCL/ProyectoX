@@ -37,6 +37,26 @@ export async function api(path, init) {
 }
 
 /**
+ * Reads every page of a paginated list ({items, totalPages}). The hosts default to
+ * 20 items per page, so a bare GET silently drops all older records.
+ * @param {string} path
+ * @param {number} [perPage]
+ * @returns {Promise<any[]>}
+ */
+export async function apiAllPages(path, perPage = 200) {
+  const items = []
+  const separator = path.includes('?') ? '&' : '?'
+  for (let page = 1; ; page++) {
+    const res = await api(`${path}${separator}page=${page}&perPage=${perPage}`)
+    const raw = Array.isArray(res) ? res : res?.items
+    if (!Array.isArray(raw)) throw new Error('Respuesta paginada inválida')
+    items.push(...raw)
+    const totalPages = Number(res?.totalPages)
+    if (Array.isArray(res) || !Number.isFinite(totalPages) || page >= totalPages || raw.length === 0) return items
+  }
+}
+
+/**
  * Multipart helper (FormData). Does not set content-type.
  * @template T
  * @param {string} path

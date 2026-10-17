@@ -280,15 +280,15 @@ test('desktop storage and original stores', async (t) => {
   await t.test('audit page treats successful empty data as authoritative and never uses desktop demo fallback', async () => {
     const pageSource = await readFile(new URL('../pages/AuditLogPage.vue', import.meta.url), 'utf8')
     const script = pageSource.match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .*\r?\n/gm, '')
-    const makePage = new Function('computed', 'ref', 'onMounted', 'useAuditStore', 't', 'api', 'isDesktopMode', script + '\nreturn { allEntries, apiError };')
+    const makePage = new Function('computed', 'ref', 'onMounted', 'watch', 'useAuditStore', 't', 'apiAllPages', 'isDesktopMode', script + '\nreturn { allEntries, apiError };')
     for (const desktop of [true, false]) {
       if (desktop) window.chrome.webview = {}
       else delete window.chrome.webview
       for (const fails of [false, true]) {
         let mounted
-        const page = makePage((fn) => ({ get value() { return fn() } }), (value) => ({ value }), (fn) => { mounted = fn }, useAuditStore, (key) => key, async () => {
+        const page = makePage((fn) => ({ get value() { return fn() } }), (value) => ({ value }), (fn) => { mounted = fn }, () => {}, useAuditStore, (key) => key, async () => {
           if (fails) throw new Error('Audit unavailable')
-          return { items: [] }
+          return []
         }, isDesktopMode)
         await mounted()
         assert.equal(page.apiError.value, fails)
@@ -296,6 +296,18 @@ test('desktop storage and original stores', async (t) => {
       }
     }
     window.chrome.webview = {}
+  })
+
+  await t.test('audit entries written with only "at" keep their real time', async () => {
+    const pageSource = await readFile(new URL('../pages/AuditLogPage.vue', import.meta.url), 'utf8')
+    const script = pageSource.match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .*\r?\n/gm, '')
+    const makePage = new Function('computed', 'ref', 'onMounted', 'watch', 'useAuditStore', 't', 'apiAllPages', 'isDesktopMode', script + '\nreturn { allEntries };')
+    window.chrome.webview = {}
+    let mounted
+    const page = makePage((fn) => ({ get value() { return fn() } }), (value) => ({ value }), (fn) => { mounted = fn }, () => {}, useAuditStore, (key) => key,
+      async () => [{ id: 'doc', at: '2026-01-02T03:04:05.000Z', action: 'POST /interno/listings/:id/import_candidate' }], isDesktopMode)
+    await mounted()
+    assert.equal(page.allEntries.value[0].timestamp, '2026-01-02T03:04:05.000Z')
   })
 
   await t.test('web still seeds audit and notifications', () => {

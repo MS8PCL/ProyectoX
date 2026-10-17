@@ -267,6 +267,11 @@ export const useAppStore = defineStore("app", {
       useNotificationsStore().add({ type: "warning", title: message, body: text });
       console.error("[app]", text, err);
     },
+    // For saves nobody awaits: _persist already reports failures with a toast, but Pinia
+    // re-rejects the promise an action returns, which surfaced as an unhandled rejection.
+    _persistInBackground() {
+      Promise.resolve(this._persist()).catch(() => {});
+    },
     _persist() {
       if (isDesktopMode()) {
         if (!this.booted || !this.state) {
@@ -307,7 +312,7 @@ export const useAppStore = defineStore("app", {
         // If another mutation arrived while we were persisting, flush once more.
         if (this.__persistPending) {
           this.__persistPending = false;
-          this._persist();
+          this._persistInBackground();
         }
       };
 
@@ -340,14 +345,14 @@ export const useAppStore = defineStore("app", {
       localStorage.setItem("px_theme_override", theme);
       this.state.theme = theme;
       this._applyTheme();
-      this._persist();
+      this._persistInBackground();
     },
     toggleTheme() {
       this.setTheme(this.state.theme === "terminal" ? "light" : "terminal");
     },
     setRole(role) {
       this.state.role = role;
-      this._persist();
+      this._persistInBackground();
     },
     toggleRole() {
       this.setRole(this.state.role === "candidato" ? "empresa" : "candidato");
@@ -432,10 +437,31 @@ export const useAppStore = defineStore("app", {
         ownerUserId: "",
       };
       this.state.listings = [l, ...this.state.listings];
-      this._persist();
+      this._persistInBackground();
       return l;
     },
 
+    // Edits and deletes are confirmed by the host first; the shared list is then re-read, so
+    // a rejected change (conflict, offer with applications, read-only) never shows as done.
+    async updateListingServer(listingId, partial) {
+      const body = {
+        kind: normalizeListingKind(partial.kind),
+        title: String(partial.title || "").trim(),
+        company: String(partial.company || "").trim(),
+        location: String(partial.location || "").trim(),
+        pay: String(partial.pay || "").trim(),
+        tags: Array.isArray(partial.tags)
+          ? partial.tags.map(String)
+          : String(partial.tags || "").split(",").map((s) => s.trim()).filter(Boolean),
+        desc: String(partial.desc || ""),
+      };
+      await api(`/listings/${encodeURIComponent(listingId)}`, { method: "PATCH", body: JSON.stringify(body) });
+      await this.refreshListingsFromServer();
+    },
+    async deleteListingServer(listingId) {
+      await api(`/listings/${encodeURIComponent(listingId)}`, { method: "DELETE" });
+      await this.refreshListingsFromServer();
+    },
     async refreshListingsFromServer() {
       const res = await api("/listings");
       if (isDesktopMode() && !Array.isArray(res?.items)) {
@@ -573,7 +599,7 @@ export const useAppStore = defineStore("app", {
         this.addApplicantToSelection(listingId, candidateId);
       }
 
-      this._persist();
+      this._persistInBackground();
       this.toast = { kind: "ok", text: "Candidatura creada (offline)." };
     },
 
@@ -656,7 +682,7 @@ export const useAppStore = defineStore("app", {
       const app = this.state.applications.find((a) => a.id === appId);
       if (!app) return;
       app.status = status;
-      this._persist();
+      this._persistInBackground();
     },
     // Company flow: pipeline per listing
     addCandidateToPipeline(listingId, candidateName) {
@@ -693,7 +719,7 @@ export const useAppStore = defineStore("app", {
         ? this.state.pipeline[listingId]
         : [];
       this.state.pipeline[listingId] = [row, ...list];
-      this._persist();
+      this._persistInBackground();
     },
 
     // Company: add known candidate to a specific listing's selection process
@@ -738,7 +764,7 @@ export const useAppStore = defineStore("app", {
       };
 
       this.state.pipeline[lid] = [row, ...list];
-      this._persist();
+      this._persistInBackground();
       this.toast = { kind: "ok", text: "Añadido al proceso de selección." };
     },
 
@@ -784,7 +810,7 @@ export const useAppStore = defineStore("app", {
       else set.add(cid);
       map[lid] = Array.from(set);
       this.state.candidateFavorites = map;
-      this._persist();
+      this._persistInBackground();
     },
     isCandidateFavorited(listingId, candidateId) {
       const ids = this.state?.candidateFavorites?.[listingId];
@@ -823,7 +849,7 @@ export const useAppStore = defineStore("app", {
         );
       }
 
-      this._persist();
+      this._persistInBackground();
     },
 
     _setApplicationStatusByListingCandidate(listingId, candidateId, status) {
@@ -847,7 +873,7 @@ export const useAppStore = defineStore("app", {
       const row = list.find((r) => r.id === rid);
       if (!row) return;
       row.notes = String(notes || "").slice(0, 500);
-      this._persist();
+      this._persistInBackground();
     },
 
     createList(name) {
@@ -864,7 +890,7 @@ export const useAppStore = defineStore("app", {
       this.state.lists = Array.isArray(this.state.lists)
         ? [list, ...this.state.lists]
         : [list];
-      this._persist();
+      this._persistInBackground();
       this.toast = { kind: "ok", text: "Lista creada." };
       return list;
     },
@@ -887,7 +913,7 @@ export const useAppStore = defineStore("app", {
         return;
       }
       row.name = n;
-      this._persist();
+      this._persistInBackground();
       this.toast = { kind: "ok", text: "Lista renombrada." };
     },
 
@@ -901,7 +927,7 @@ export const useAppStore = defineStore("app", {
       set.add(cid);
       members[lid] = Array.from(set);
       this.state.listMembers = members;
-      this._persist();
+      this._persistInBackground();
       this.toast = { kind: "ok", text: "Añadido a la lista." };
     },
 
@@ -913,7 +939,7 @@ export const useAppStore = defineStore("app", {
       const arr = Array.isArray(members[lid]) ? members[lid].map(String) : [];
       members[lid] = arr.filter((x) => x !== cid);
       this.state.listMembers = members;
-      this._persist();
+      this._persistInBackground();
     },
 
     setCandidateCvUrl(candidateId, cvUrl) {
@@ -943,18 +969,18 @@ export const useAppStore = defineStore("app", {
           },
           ...this.state.candidates,
         ];
-      this._persist();
+      this._persistInBackground();
     },
     updateProfile(role, patch) {
       if (!this.state.profile[role]) return;
       this.state.profile[role] = { ...this.state.profile[role], ...patch };
-      this._persist();
+      return this._persist();
     },
     importStateFromJsonText(text) {
       const data = JSON.parse(text);
       this.state = normalizeImportedState(data);
       this._applyTheme();
-      this._persist();
+      this._persistInBackground();
     },
     clearToast() {
       this.toast = null;

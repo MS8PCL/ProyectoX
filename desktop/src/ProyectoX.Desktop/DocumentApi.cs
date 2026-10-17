@@ -19,6 +19,7 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
     public const int MaxTotalBytes = 64 * 1024 * 1024;
     public const int MaxChunkBytes = 256 * 1024;
     public const int MaxZipBytes = 256 * 1024 * 1024;
+    private const int MaxCandidatePathChars = 1024;
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly Dictionary<string, Upload> uploads = new(StringComparer.Ordinal);
         private sealed record DocumentSource(JsonObject Metadata, string? ImportedRelativePath = null);
@@ -55,7 +56,7 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
             if (op == "uploadBegin")
             {
                 var name = FileName(Required(payload, "fileName", 240));
-                var mime = Mime(name, Required(payload, "mime", 150));
+                var mime = Mime(name, Optional(payload, "mime", 150));
                 var size = Integer(payload, "size");
                 if (size < 1 || size > MaxFileBytes || uploads.Count >= 128 || uploads.Values.Sum(x => (long)x.Size) + size > MaxTotalBytes)
                     throw Invalid("Límite de subida: 50 MiB por archivo y 64 MiB por host.");
@@ -137,12 +138,23 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
             }
             if (snapshot.Revision != revision) throw Error("conflict", "Los datos han cambiado. Recargue antes de guardar.");
             var used = new HashSet<string>(StringComparer.Ordinal);
+            var rowsBefore = EntityRevisions.Rows(data);
             // Files are published before state. A failed/uncertain commit may leave harmless
             // UUID orphans; never delete files that a recovered journal may reference.
             var result = await WriteAsync(data, path, body, used, token);
+            EntityRevisions.Stamp(data, EntityRevisions.Touched(rowsBefore, data), revision + 1);
             operations[op] = fingerprint;
             results[op] = result.DeepClone();
-            Rows(data, "audit_log").Add(new JsonObject { ["id"] = Guid.NewGuid().ToString("D"), ["at"] = Now(), ["action"] = method + " " + path, ["actorUserId"] = identity.Id, ["correlationId"] = op });
+            Receipts.Trim(data);
+            // Same shape as LegacyApi: pseudonymous actor, no record ids in the route, and the
+            // fields the audit page reads (it showed these entries at "now" and as "Sistema").
+            var at = Now(); var route = AuditRoute(path);
+            Rows(data, "audit_log").Add(new JsonObject
+            {
+                ["id"] = Guid.NewGuid().ToString("D"), ["at"] = at, ["action"] = method + " " + route,
+                ["actorType"] = "windows", ["actorUserId"] = Hash(Encoding.UTF8.GetBytes(identity.Id)), ["entityType"] = route.Split('/').ElementAtOrDefault(1),
+                ["timestamp"] = at, ["user"] = identity.DisplayName, ["entity"] = route, ["details"] = method + " " + route, ["correlationId"] = op
+            });
             StoreSnapshot committed;
             try { committed = await store.CommitAsync(revision, data, identity.Id, token); }
             catch (StoreConflictException)
@@ -206,32 +218,53 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
         string userId = identity.Id;
         string? applicationId = null;
         JsonObject? application = null;
+        JsonObject? existingApplication = null;
+        JsonObject? targetListing = null;
+        JsonObject? targetCandidate = null;
         if (path != "/profile/imports/file")
         {
             var listing = Find(data, "listings", path.Split('/')[3]);
             var owner = Required(listing, "ownerUserId", 256);
-            var first = Required(fields, "firstName", 80);
-            var last = Required(fields, "lastName", 120);
-            var email = Required(fields, "email", 120).ToLowerInvariant();
-            if (!MailAddress.TryCreate(email, out var address) || address.Address != email || email.Any(char.IsWhiteSpace) || !email.Contains('@')) throw Invalid("Email inválido.");
-            var birth = Required(fields, "birthDate", 40);
-            if (!DateOnly.TryParseExact(birth, "yyyy-MM-dd", out var date)) throw Invalid("Fecha de nacimiento inválida.");
-            var cover = Required(fields, "coverLetter", 5000);
-            if (files.Count(x => Text(x["name"]) == "cv") != 1 || files.Any(x => Text(x["name"]) is not ("cv" or "certificates"))) throw Invalid("CV obligatorio; solo se permiten certificados adicionales.");
+            var first = Optional(fields, "firstName", 80);
+            var last = Optional(fields, "lastName", 120);
+            var email = Optional(fields, "email", 120).ToLowerInvariant();
+            if (email.Length > 0 && (!MailAddress.TryCreate(email, out var address) || address.Address != email || email.Any(char.IsWhiteSpace) || !email.Contains('@'))) throw Invalid("Email inválido.");
+            var birth = Optional(fields, "birthDate", 40);
+            if (birth.Length > 0 && (!DateOnly.TryParseExact(birth, "yyyy-MM-dd", out var date) || date > DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)))) throw Invalid("Fecha de nacimiento inválida.");
+            var cover = Optional(fields, "coverLetter", 5000);
+            if (files.Count(x => Text(x["name"]) == "cv") > 1 || files.Any(x => Text(x["name"]) is not ("cv" or "certificates" or "attachments"))) throw Invalid("Solo se permite un CV y certificados o adjuntos adicionales.");
             MergeCandidates(data);
-            var candidate = Rows(data, "candidates").OfType<JsonObject>().FirstOrDefault(x => string.Equals(Text(x["email"]), email, StringComparison.OrdinalIgnoreCase));
+            var candidate = email.Length == 0 ? null : Rows(data, "candidates").OfType<JsonObject>().FirstOrDefault(x => string.Equals(Text(x["email"]), email, StringComparison.OrdinalIgnoreCase));
             if (candidate is null)
             {
                 candidate = NewRecord(); candidate["userId"] = ""; candidate["public"] = false; candidate["skills"] = new JsonArray();
                 foreach (var key in new[] { "title", "location", "about" }) candidate[key] = "";
                 Rows(data, "candidates").Add(candidate);
             }
-            candidate["firstName"] = first; candidate["lastName"] = last; candidate["fullName"] = first + " " + last; candidate["name"] = first + " " + last; candidate["email"] = email; candidate["updated"] = Now();
+            if (first.Length > 0) candidate["firstName"] = first;
+            if (last.Length > 0) candidate["lastName"] = last;
+            if (first.Length > 0 || last.Length > 0)
+            {
+                var fullName = string.Join(" ", new[] { Text(candidate["firstName"]), Text(candidate["lastName"]) }.Where(x => !string.IsNullOrWhiteSpace(x)));
+                candidate["fullName"] = fullName; candidate["name"] = fullName;
+            }
+            if (email.Length > 0) candidate["email"] = email;
+            candidate["updated"] = Now();
+            targetListing = listing; targetCandidate = candidate;
             userId = Required(candidate, "id", 256);
-            application = NewRecord(); applicationId = Text(application["id"]);
-            application["listingId"] = Text(listing["id"]); application["companyUserId"] = owner;
-            application["candidateUserId"] = userId; application["candidateId"] = userId;
-            application["stage"] = "nuevo"; application["notes"] = ""; application["birthDate"] = date.ToString("yyyy-MM-dd"); application["coverLetter"] = cover;
+            // Re-importing someone already in this listing attaches the documents to that
+            // application, as POST /applications does, instead of duplicating the pipeline card.
+            existingApplication = Rows(data, "applications").OfType<JsonObject>()
+                .FirstOrDefault(x => (Text(x["candidateUserId"]) ?? Text(x["candidateId"])) == userId && Text(x["listingId"]) == Text(listing["id"]));
+            application = existingApplication ?? NewRecord(); applicationId = Text(application["id"]);
+            if (existingApplication is null)
+            {
+                application["listingId"] = Text(listing["id"]); application["companyUserId"] = owner;
+                application["candidateUserId"] = userId; application["candidateId"] = userId;
+                application["stage"] = "nuevo"; application["notes"] = "";
+                if (birth.Length > 0) application["birthDate"] = birth;
+                if (cover.Length > 0) application["coverLetter"] = cover;
+            }
         }
         else
         {
@@ -245,16 +278,18 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
         {
             var file = entry.File;
             var id = Guid.NewGuid().ToString("D");
-            var target = SafeDocumentPath(id, createDirectory: true);
+            var relative = targetListing is null ? null : CandidateRelativePath(targetListing, targetCandidate!, id, file.FileName);
+            var target = relative is null ? SafeDocumentPath(id, createDirectory: true) : SafeCandidatePath(relative, id, file.FileName, createDirectory: true);
             await using (var stream = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None, 8192, FileOptions.WriteThrough))
             {
                 await stream.WriteAsync(file.Bytes, token);
                 stream.Flush(true);
             }
             var document = new JsonObject { ["id"] = id, ["fileName"] = file.FileName, ["mime"] = file.Mime, ["size"] = file.Bytes.Length, ["sha256"] = Hash(file.Bytes) };
+            if (relative is not null) document["relativePath"] = relative;
             Rows(data, "documents").Add(document);
             imported = NewRecord(); imported["userId"] = userId; imported["applicationId"] = applicationId;
-            imported["kind"] = "document"; imported["docType"] = applicationId is null ? Text(fields["docType"]) : Text(entry.Part["name"]) == "cv" ? "cv" : "certificate";
+            imported["kind"] = "document"; imported["docType"] = applicationId is null ? Text(fields["docType"]) : Text(entry.Part["name"]) switch { "cv" => "cv", "certificates" => "certificate", _ => "other" };
             imported["file"] = file.FileName; imported["documentId"] = id;
             imported["url"] = "/documents/" + id;
             imported["consentText"] = applicationId is null ? "He revisado y apruebo importar y almacenar estos datos en mi cuenta." : "Internal import: consent";
@@ -262,9 +297,9 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
         }
         if (application is not null)
         {
-            Rows(data, "applications").Add(application);
+            if (existingApplication is null) Rows(data, "applications").Add(application);
             if (data.ContainsKey("candidate_profiles")) data["candidate_profiles"] = Rows(data, "candidates").DeepClone();
-            return new JsonObject { ["ok"] = true, ["applicationId"] = applicationId, ["candidateProfileId"] = userId };
+            return new JsonObject { ["ok"] = true, ["applicationId"] = applicationId, ["candidateProfileId"] = userId, ["already"] = existingApplication is not null };
         }
         return new JsonObject { ["ok"] = true, ["item"] = imported!.DeepClone() };
     }
@@ -427,7 +462,9 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
         var size = Integer(doc, "size");
         if (size < 1 || size > MaxFileBytes) throw Invalid("Tamaño de documento inválido.");
         var name = FileName(Required(doc, "fileName", 240)); var mime = Mime(name, Required(doc, "mime", 150));
-        var path = source.ImportedRelativePath is { } relative ? SafeImportedPath(relative) : SafeDocumentPath(Required(doc, "id", 36), false);
+        var path = source.ImportedRelativePath is { } relative ? SafeImportedPath(relative) : doc.ContainsKey("relativePath")
+            ? SafeCandidatePath(Required(doc, "relativePath", 2048), Required(doc, "id", 36), name, false)
+            : SafeDocumentPath(Required(doc, "id", 36), false);
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         if (stream.Length != size) throw Error("store_unavailable", "El tamaño del documento no coincide.");
         var bytes = new byte[(int)size]; await stream.ReadExactlyAsync(bytes, token);
@@ -470,7 +507,7 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
 
     private PreparedDocument FilePart(JsonObject part, HashSet<string> used)
     {
-        var name = FileName(Required(part, "fileName", 240)); var mime = Mime(name, Required(part, "mime", 150)); var size = Integer(part, "size");
+        var name = FileName(Required(part, "fileName", 240)); var mime = Mime(name, Optional(part, "mime", 150)); var size = Integer(part, "size");
         if (size < 1 || size > MaxFileBytes) throw Invalid("Tamaño inválido.");
         if (Text(part["uploadId"]) is { } id)
         {
@@ -507,6 +544,102 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
         }
         if (inline > 512 * 1024) throw Invalid("Multipart inline supera 512 KiB.");
         return (fields, files);
+    }
+
+    /// <summary>Extension allowlist only; callers must still verify bytes and request user consent.</summary>
+    public static bool CanOpenNatively(string fileName)
+    {
+        if (fileName is null) return false;
+        try { FileName(fileName); }
+        catch (LegacyApiException) { return false; }
+        return Path.GetExtension(fileName).ToLowerInvariant() is ".pdf" or ".doc" or ".docx" or ".txt" or ".csv" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".bmp" or ".xlsx" or ".xls" or ".ppt" or ".pptx";
+    }
+
+    private static string StorageLabel(string value, int max)
+    {
+        if (max < 1) throw Invalid("La raíz es demasiado larga para organizar los documentos.");
+        try { value = value.Normalize(NormalizationForm.FormC); }
+        catch (ArgumentException) { throw Invalid("Unicode inválido en el nombre."); }
+        value = new string(value.Select(c => char.IsControl(c) || char.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.Format || "<>:\"/\\|?*%".Contains(c) ? '_' : c).ToArray());
+        while (value.Contains(" -- ", StringComparison.Ordinal)) value = value.Replace(" -- ", " - ", StringComparison.Ordinal);
+        if (value.Length > max) value = value[..max];
+        if (value.Length > 0 && char.IsHighSurrogate(value[^1])) value = value[..^1];
+        value = value.Trim().TrimEnd('.', ' ');
+        if (value.Length == 0) value = "_";
+        try { return FileName(value); }
+        catch (LegacyApiException) { return "_" + (value.Length >= max ? value[..(max - 1)] : value); }
+    }
+
+    private static string StorageFileName(string name, int max)
+    {
+        var extension = Path.GetExtension(name);
+        if (extension.Length is > 0 and <= 16 && max > extension.Length)
+            return StorageLabel(name[..^extension.Length], max - extension.Length) + StorageLabel(extension, extension.Length);
+        return StorageLabel(name, max);
+    }
+
+    private static string StorageId(string id)
+    {
+        if (!Regex.IsMatch(id, @"^[a-zA-Z0-9_-]{1,64}$")) throw Invalid("ID inseguro para la carpeta de documentos.");
+        return id;
+    }
+
+    private string CandidateRelativePath(JsonObject listing, JsonObject candidate, string id, string name)
+    {
+        var listingId = StorageId(Required(listing, "id", 64));
+        var candidateId = StorageId(Required(candidate, "id", 64));
+        // .NET 8 System.IO supports Windows long paths without an extended-path prefix
+        // in metadata. Bound descriptive names independently; never truncate opaque IDs.
+        var title = StorageLabel(Text(listing["title"]) ?? Text(listing["name"]) ?? "Sin puesto", 48);
+        var fullName = string.Join(" ", new[] { Text(candidate["firstName"]), Text(candidate["lastName"]) }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        if (string.IsNullOrWhiteSpace(fullName)) fullName = Text(candidate["fullName"]) ?? Text(candidate["name"]) ?? "Sin nombre";
+        if (string.IsNullOrWhiteSpace(fullName)) fullName = "Sin nombre";
+        var person = StorageLabel(fullName, 48);
+        var file = StorageFileName(name, 120);
+        return $"Candidaturas/{title} -- {listingId}/{person} -- {candidateId}/Ficheros de interes/{id} -- {file}";
+    }
+
+    private string SafeCandidatePath(string relative, string id, string name, bool createDirectory)
+    {
+        if (!Guid.TryParseExact(id, "D", out var uuid) || uuid.ToString("D") != id) throw Invalid("ID de documento inválido.");
+        if (Path.IsPathRooted(relative) || relative.Contains('\\') || relative.Contains('%') || relative.Any(char.IsControl)) throw Invalid("Ruta de candidatura no canónica.");
+        var segments = relative.Split('/');
+        if (segments.Length != 5 || segments[0] != "Candidaturas" || segments[3] != "Ficheros de interes") throw Invalid("Jerarquía de documento inválida.");
+        foreach (var segment in segments) FileName(segment);
+        foreach (var folder in segments.Skip(1).Take(2))
+        {
+            var parts = folder.Split(" -- ", StringSplitOptions.None);
+            if (parts.Length != 2 || parts[0].Length == 0 || StorageLabel(parts[0], parts[0].Length) != parts[0]) throw Invalid("Carpeta no canónica.");
+            StorageId(parts[1]);
+        }
+        var prefix = id + " -- ";
+        if (!segments[4].StartsWith(prefix, StringComparison.Ordinal)) throw Invalid("La ruta no pertenece al documento.");
+        var suffix = segments[4][prefix.Length..];
+        if (suffix.Length == 0 || StorageFileName(name, suffix.Length) != suffix) throw Invalid("Nombre físico de documento no canónico.");
+        var fullRoot = Path.GetFullPath(root);
+        if (!Directory.Exists(fullRoot)) throw Error("store_unavailable", "La raíz configurada debe existir.");
+        for (var info = new DirectoryInfo(fullRoot); info is not null; info = info.Parent)
+            if ((info.Attributes & FileAttributes.ReparsePoint) != 0) throw Error("store_unavailable", "Raíz con reparse point no permitida.");
+        var path = Path.GetFullPath(Path.Combine(fullRoot, Path.Combine(segments)));
+        var rootPrefix = Path.EndsInDirectorySeparator(fullRoot) ? fullRoot : fullRoot + Path.DirectorySeparatorChar;
+        if (!path.StartsWith(rootPrefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal) || path.Length > MaxCandidatePathChars) throw Invalid("Ruta fuera de raíz o supera el límite de 1024 caracteres.");
+        var current = fullRoot;
+        for (var i = 0; i < segments.Length; i++)
+        {
+            current = Path.Combine(current, segments[i]);
+            FileAttributes attributes;
+            try { attributes = File.GetAttributes(current); }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+            {
+                if (!createDirectory) throw Error("store_unavailable", "Documento no disponible.");
+                if (i == segments.Length - 1) return path;
+                Directory.CreateDirectory(current);
+                attributes = File.GetAttributes(current);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { throw Error("store_unavailable", "Ruta de documento no disponible."); }
+            if ((attributes & FileAttributes.ReparsePoint) != 0 || ((attributes & FileAttributes.Directory) != 0) != (i < segments.Length - 1)) throw Error("store_unavailable", "Documento o ancestro inseguro.");
+        }
+        return path;
     }
 
     private string SafeDocumentPath(string id, bool createDirectory)
@@ -551,14 +684,35 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
     }
     private static string FileName(string name)
     {
-        if (name is "." or ".." || name.EndsWith('.') || name.EndsWith(' ') || name.Any(c => char.IsControl(c) || "<>:\"/\\|?*".Contains(c)) || name.Length > 240) throw Invalid("Nombre de archivo inseguro.");
-        var stem = name.Split('.')[0].ToUpperInvariant();
-        if (Regex.IsMatch(stem, @"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$")) throw Invalid("Nombre reservado."); return name;
+        if (string.IsNullOrWhiteSpace(name) || name is "." or ".." || name.EndsWith('.') || name.EndsWith(' ') || name.Any(c => char.IsControl(c) || "<>:\"/\\|?*".Contains(c)) || name.Length > 240) throw Invalid("Nombre de archivo inseguro.");
+        var stem = name.Split('.')[0].TrimEnd(' ').ToUpperInvariant();
+        if (Regex.IsMatch(stem, @"^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³])$")) throw Invalid("Nombre reservado."); return name;
     }
     private static string Mime(string name, string mime)
     {
-        var expected = Path.GetExtension(name).ToLowerInvariant() switch { ".pdf" => "application/pdf", ".doc" => "application/msword", ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document", _ => "" };
-        if (expected.Length == 0 || mime != expected) throw Invalid("Solo PDF/DOC/DOCX con MIME correspondiente."); return mime;
+        if (mime.Length > 150 || mime.Any(char.IsControl)) throw Invalid("MIME inválido.");
+        var type = mime.Split(';', 2)[0].Trim().ToLowerInvariant();
+        if (type.Length > 0 && !Regex.IsMatch(type, @"^[a-z0-9!#$&^_.+\-]+/[a-z0-9!#$&^_.+\-]+$")) throw Invalid("MIME inválido.");
+        var expected = Path.GetExtension(name).ToLowerInvariant() switch
+        {
+            ".pdf" => "application/pdf", ".doc" => "application/msword",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".txt" => "text/plain", ".csv" => "text/csv", ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg", ".gif" => "image/gif", ".bmp" => "image/bmp",
+            ".xls" => "application/vnd.ms-excel", ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".ppt" => "application/vnd.ms-powerpoint", ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            _ => ""
+        };
+        if (expected.Length == 0) return "application/octet-stream";
+        var alias = Path.GetExtension(name).ToLowerInvariant() switch
+        {
+            ".csv" => type is "text/plain" or "application/vnd.ms-excel",
+            ".jpg" or ".jpeg" => type == "image/pjpeg",
+            ".bmp" => type == "image/x-ms-bmp",
+            _ => false
+        };
+        if (type.Length > 0 && type != "application/octet-stream" && type != expected && !alias) throw Invalid("El MIME no corresponde al formato conocido.");
+        return expected;
     }
     private static byte[] Decode(JsonObject payload, int max)
     {
@@ -571,6 +725,7 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
         if (expected.Length != 64 || !expected.All(Uri.IsHexDigit) || !string.Equals(Convert.ToHexString(SHA256.HashData(bytes)), expected, StringComparison.OrdinalIgnoreCase)) throw Invalid("SHA-256 no coincide.");
     }
     private static string Hash(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
+    private static string AuditRoute(string path) => Regex.IsMatch(path, @"^/interno/listings/[^/]+/import_candidate$") ? "/interno/listings/:id/import_candidate" : path;
     private static JsonNode Canonical(JsonNode node) => node switch { JsonObject obj => new JsonObject(obj.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => new KeyValuePair<string, JsonNode?>(x.Key, x.Value is null ? null : Canonical(x.Value)))), JsonArray arr => new JsonArray(arr.Select(x => x is null ? null : Canonical(x)).ToArray()), _ => node.DeepClone() };
     private static void ValidateCollections(JsonObject data)
     {
@@ -597,6 +752,13 @@ public sealed class DocumentApi(SharedStore store, string root, bool readOnly, D
     private static string Now() => DateTimeOffset.UtcNow.ToString("O");
     private static JsonObject Items(IEnumerable<JsonObject> rows) => new() { ["ok"] = true, ["items"] = new JsonArray(rows.Select(x => x.DeepClone()).ToArray()) };
     private static string? Text(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+    private static string Optional(JsonObject obj, string key, int max)
+    {
+        if (!obj.ContainsKey(key)) return "";
+        var text = Text(obj[key]);
+        if (text is null || text.Length > max) throw Invalid("Campo inválido: " + key);
+        return string.IsNullOrWhiteSpace(text) ? "" : text;
+    }
     private static string Required(JsonObject obj, string key, int max) { var text = Text(obj[key]); if (string.IsNullOrWhiteSpace(text) || text.Length > max) throw Invalid("Campo inválido: " + key); return text; }
     private static long Integer(JsonObject obj, string key)
         {

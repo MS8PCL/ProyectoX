@@ -9,6 +9,7 @@ var root = Path.Combine(Path.GetTempPath(), "px-doc-tests-" + Guid.NewGuid().ToS
 Directory.CreateDirectory(root);
 try
 {
+    await OptionalCandidateTests.RunAsync(root);
     var store = new SharedStore(root);
     var staff = new DesktopIdentity("windows-staff", "staff@example.test", "rrhh", "Staff");
     var api = new DocumentApi(store, root, false, staff);
@@ -41,6 +42,12 @@ try
     var request = Request("/interno/listings/listing/import_candidate", body, 1);
     var result = await api.HandleAsync(request, default);
     Check(result["candidateProfileId"]!.GetValue<string>() == "original-id", "profile id, not user id");
+    var audit = (await store.ReadAsync()).Data["audit_log"]!.AsArray().OfType<JsonObject>().Last();
+    Check(audit["actorUserId"]!.GetValue<string>() == Hash(Encoding.UTF8.GetBytes(staff.Id)), "audit pseudonymises the Windows identity like LegacyApi");
+    Check(!audit.ToJsonString().Contains(staff.Id, StringComparison.Ordinal), "no raw Windows identity in the audit");
+    Check(audit["action"]!.GetValue<string>() == "POST /interno/listings/:id/import_candidate", "normalised audit route");
+    Check(audit["timestamp"]?.GetValue<string>() == audit["at"]!.GetValue<string>() && audit["user"]!.GetValue<string>() == staff.DisplayName, "audit page fields present");
+    Check(audit["entity"]!.GetValue<string>() == "/interno/listings/:id/import_candidate" && audit["actorType"]!.GetValue<string>() == "windows", "entity and actor type");
     var appId = result["applicationId"]!.GetValue<string>();
     var after = await store.ReadAsync();
     Check(after.Revision == 2 && after.Data["applications"]!.AsArray().Count == 1, "atomic commit");
@@ -99,9 +106,14 @@ try
         await quotaHost.HandleUploadAsync("uploadBegin", new JsonObject { ["fileName"] = "quota.pdf", ["mime"] = "application/pdf", ["size"] = DocumentApi.MaxFileBytes }, default);
         await Reject(() => quotaHost.HandleUploadAsync("uploadBegin", new JsonObject { ["fileName"] = "quota2.pdf", ["mime"] = "application/pdf", ["size"] = 15 * 1024 * 1024 }, default), "invalid_request");
         var beforeInvalid = await store.ReadAsync();
-        var badBody = (JsonObject)body.DeepClone(); badBody["parts"]!.AsArray().RemoveAt(0);
+        var badBody = (JsonObject)body.DeepClone(); badBody["parts"]![0]!["value"] = new string('x', 81);
         await Reject(() => api.HandleAsync(Request("/interno/listings/listing/import_candidate", badBody, beforeInvalid.Revision), default), "invalid_request");
         Check((await store.ReadAsync()).Revision == beforeInvalid.Revision, "validation never publishes partial references");
+        var unborn = new JsonObject { ["parts"] = new JsonArray(Field("firstName", "Futura"), Field("lastName", "Persona"), Field("email", "futura@example.test"),
+            Field("birthDate", DateTime.UtcNow.AddYears(1).ToString("yyyy-MM-dd")), Field("coverLetter", "Carta"),
+            new JsonObject { ["name"] = "cv", ["fileName"] = "cv.pdf", ["mime"] = "application/pdf", ["size"] = bytes.Length, ["base64"] = Convert.ToBase64String(bytes) }) };
+        await Reject(() => api.HandleAsync(Request("/interno/listings/listing/import_candidate", unborn, beforeInvalid.Revision), default), "invalid_request");
+        Check((await store.ReadAsync()).Revision == beforeInvalid.Revision, "a future birth date is rejected without writes");
         await Reject(() => api.HandleUploadAsync("uploadChunk", new JsonObject { ["uploadId"] = next["uploadId"]!.DeepClone(), ["offset"] = long.MaxValue, ["base64"] = Convert.ToBase64String(bytes), ["sha256"] = Hash(bytes) }, default), "invalid_request");
         // Inject an uncertain durable commit. Recovery must keep the published document
         // and replay its receipt rather than creating another reference or deleting it.
@@ -134,13 +146,21 @@ try
             await store.CommitAsync(oversize.Revision, zipBefore.Data, "restore-test-fixture");
             await Reject(() => api.HandleAsync(new JsonObject { ["path"] = "/profile/imports", ["body"] = "{" }, default), "invalid_request");
             await TestReparseAsync(root, store, staff, docPath);
-            var diskPath = Path.Combine(root, "documents", after.Data["documents"]![0]!["id"]!.GetValue<string>() + ".bin");
+            var diskPath = Path.Combine(root, after.Data["documents"]![0]!["relativePath"]!.GetValue<string>().Replace('/', Path.DirectorySeparatorChar));
     await File.WriteAllBytesAsync(diskPath, Encoding.UTF8.GetBytes("tampered"));
     await Reject(() => api.PrepareExportAsync(docPath, default), "store_unavailable");
     var missingRoot = Path.Combine(root, "does-not-exist");
     var missing = new DocumentApi(store, missingRoot, false, staff);
     await Reject(() => missing.PrepareExportAsync(docPath, default), "store_unavailable");
     Check(!Directory.Exists(missingRoot), "never create missing root");
+    var inlineCv = new JsonObject { ["name"] = "cv", ["fileName"] = "cv.pdf", ["mime"] = "application/pdf", ["size"] = bytes.Length, ["base64"] = Convert.ToBase64String(bytes) };
+    var again = new JsonObject { ["parts"] = new JsonArray(
+        Field("firstName", "Test"), Field("lastName", "Person"), Field("email", "PERSON@example.test"),
+        Field("birthDate", "1990-01-02"), Field("coverLetter", "Letter"), inlineCv) };
+    var reimport = await api.HandleAsync(Request("/interno/listings/listing/import_candidate", again, (await store.ReadAsync()).Revision), default);
+    Check(reimport["applicationId"]!.GetValue<string>() == appId && reimport["already"]!.GetValue<bool>(), "re-import reuses the application");
+    Check((await store.ReadAsync()).Data["applications"]!.AsArray().Count == 1, "no duplicate application");
+    Check((await api.HandleAsync(new JsonObject { ["path"] = $"/interno/applications/{appId}/documents" }, default))["items"]!.AsArray().Count == 2, "new CV attached to it");
     Console.WriteLine("PASS: document contracts, temp store, uploads, replay, permissions, export and safety");
         await ImportedDocumentsTests.RunAsync(root);
 }
@@ -151,7 +171,7 @@ static async Task TestReparseAsync(string root, SharedStore store, DesktopIdenti
     var safe = Path.Combine(root, "reparse-fixture");
     var target = Path.Combine(root, "reparse-target");
     Directory.CreateDirectory(safe); Directory.CreateDirectory(target);
-    var link = Path.Combine(safe, "documents");
+    var link = Path.Combine(safe, "Candidaturas");
     if (OperatingSystem.IsWindows())
     {
         var start = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"")

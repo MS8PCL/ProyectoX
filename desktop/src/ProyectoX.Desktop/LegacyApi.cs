@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO;
 using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
@@ -57,6 +58,7 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
         {
             var snapshot = await store.ReadAsync(token);
             var data = Normalize(snapshot.Data);
+            SeedCatalogs(data);
             return WithMetadata(Dispatch(data, path, query, method, body, "", false), snapshot.Revision, data);
         }
         if (readOnly) throw Error("read_only", "El almacenamiento está en modo solo lectura.");
@@ -76,10 +78,31 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
         var next = Normalize(before.Data);
         if (HasReceipt(next, operationId, fingerprint))
             return WithMetadata(ReplayResult(next, path, method, body, operationId), before.Revision, next);
-        if (before.Revision != revision) throw Error("conflict", "Los datos han cambiado. Recargue antes de guardar.");
+        // /state and /settings only replace this identity's own preference record. Requiring the
+        // global revision made every theme or language change fail whenever anyone else had saved
+        // anything; only a newer save of this same record (another window of this user) conflicts.
+        var preferences = method == "PUT" && path is "/state" or "/settings" ? "desktop_user_" + path[1..] : null;
+        if (preferences is not null && before.Revision != revision)
+        {
+            if (DesktopRecord(next, preferences)?["savedRevision"] is JsonValue saved && saved.TryGetValue<long>(out var savedAt) && savedAt > revision)
+                throw Error("conflict", "Los datos han cambiado. Recargue antes de guardar.");
+            revision = before.Revision;
+        }
         MergeCandidateAliases(next);
+        SeedCatalogs(next);
+        var rowsBefore = EntityRevisions.Rows(next);
         var result = Dispatch(next, path, query, method, body, operationId, false);
         SynchronizeCandidateAliases(next);
+        var touched = EntityRevisions.Touched(rowsBefore, next);
+        if (before.Revision != revision)
+        {
+            // A stale edit only touching records nobody changed since the caller's revision cannot
+            // lose anyone's update, so it applies; anything else still needs the latest revision.
+            if (!EntityRevisions.UnchangedSince(next, touched, revision)) throw Error("conflict", "Los datos han cambiado. Recargue antes de guardar.");
+            revision = before.Revision;
+        }
+        EntityRevisions.Stamp(next, touched, revision + 1);
+        if (preferences is not null && DesktopRecord(next, preferences) is { } record) record["savedRevision"] = revision + 1;
         Array(next, "audit_log").Add(new JsonObject
         {
             ["id"] = NewId(operationId, "audit"), ["at"] = Now(), ["action"] = method + " " + AuditRoute(path),
@@ -88,6 +111,7 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
             ["entity"] = AuditRoute(path), ["details"] = method + " " + AuditRoute(path), ["correlationId"] = operationId
         });
         ((JsonObject)next["_operations"]!)[operationId] = fingerprint;
+        Receipts.Trim(next);
         try
         {
             var committed = await store.CommitAsync(revision, next, identity.Id, token);
@@ -274,8 +298,10 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
                 {
                     var row = Find(data, "applications", aid);
                     if (Rows(data, "hire_profiles").Any(x => Text(x["applicationId"]) == aid)) throw Error("reference_conflict", "La candidatura tiene un alta asociada.");
-                    if (Rows(data, "profile_imports").Any(x => Text(x["applicationId"]) == aid))
-                        throw Error("document_dispatch_required", "DocumentApi debe coordinar la eliminación de los documentos antes de borrar la candidatura.");
+                    // Like the web backend, the application's own imports go with it. Their document
+                    // bytes stay on disk: published files are never deleted (see DocumentApi).
+                    var imports = Array(data, "profile_imports");
+                    foreach (var item in imports.OfType<JsonObject>().Where(x => Text(x["applicationId"]) == aid).ToArray()) imports.Remove(item);
                     Array(data, "applications").Remove(row);
                 }
                 return Ok();
@@ -327,6 +353,11 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
         if (standalone)
         {
             Required(body, "firstName", 120); Required(body, "lastName", 120); Email(body, "email");
+            // One open IT request per person: a second one while the first is not completed would
+            // be provisioned twice. A completed request does not block a later rehire.
+            if (!replay && Rows(data, "integration_outbox").Any(x => Text(x["kind"]) == "alta_it" && Text(x["status"]) != "completed" &&
+                    string.Equals(Text(x["export_blob"]?["candidate"]?["email"]), Text(body["email"]), StringComparison.OrdinalIgnoreCase)))
+                throw Error("reference_conflict", "Ya hay una solicitud de alta IT sin completar para este email.");
             candidate = Candidates(data).FirstOrDefault(x => string.Equals(Text(x["email"]), Text(body["email"]), StringComparison.OrdinalIgnoreCase))
                 ?? (replay ? Candidate(data, NewId(op, "candidate")) : Add(data, "candidates", op, "candidate"));
             if (!replay)
@@ -668,6 +699,35 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
         if (identity.Role is not ("admin" or "rrhh" or "it")) throw Error("forbidden", "Esta operación requiere un rol interno autorizado por el host.");
     }
 
+    // A new store has no departments or job titles, which made every IT onboarding impossible.
+    // The official lists the web backend seeded are embedded unchanged; stable ids let a GET
+    // show the same rows that the next write persists. Existing catalogs are never touched.
+    private static readonly Dictionary<string, JsonObject[]> CatalogSeeds = new[] { "departments", "job_titles" }
+        .ToDictionary(collection => collection, LoadCatalogSeed);
+    private static JsonObject[] LoadCatalogSeed(string collection)
+    {
+        using var stream = typeof(LegacyApi).Assembly.GetManifestResourceStream($"ProyectoX.Seeds/{collection}.seed.cjs");
+        if (stream is null) return [];
+        var rows = new List<JsonObject>(); var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var line in new StreamReader(stream).ReadToEnd().Split('\n'))
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(line, @"^\s*'([^']+)',?\s*$");
+            if (!match.Success) continue;
+            var name = match.Groups[1].Value.Trim();
+            var key = new string(name.ToLowerInvariant().Where(c => c is >= 'a' and <= 'z' or >= '0' and <= '9').ToArray());
+            if (key.Length == 0 || !seen.Add(key)) continue;
+            var separator = name.IndexOf(" - ", StringComparison.Ordinal);
+            rows.Add(new JsonObject { ["id"] = $"seed-{collection}-{key}", ["code"] = separator >= 0 ? name[..separator].Trim() : name, ["name"] = name, ["normalizedKey"] = key, ["isActive"] = true });
+        }
+        return rows.ToArray();
+    }
+    private static void SeedCatalogs(JsonObject data)
+    {
+        foreach (var (collection, seeds) in CatalogSeeds)
+            if (seeds.Length > 0 && (data[collection] is not JsonArray existing || existing.Count == 0))
+                data[collection] = new JsonArray(seeds.Select(row => (JsonNode?)row.DeepClone()).ToArray());
+    }
+
     private static JsonObject Normalize(JsonObject source)
     {
         var data = (JsonObject)source.DeepClone();
@@ -805,4 +865,71 @@ public sealed class LegacyApi(SharedStore store, bool readOnly, DesktopIdentity 
     private static LegacyApiException Unsupported(string method, string path) => Error("unsupported_operation", "Operación local no implementada para esta ruta y método.");
     private static LegacyApiException Invalid(string message) => Error("invalid_request", message);
     private static LegacyApiException Error(string code, string message) => new(code, message);
+}
+
+/// <summary>
+/// Per-record optimistic concurrency on top of the store's global revision. Each write records
+/// the revision at which every business record it touched last changed (in "_revisions", never
+/// inside the records, so snapshots and exports are unchanged). Records without a stamp were last
+/// written by an older host or another path, so they never qualify for a stale write.
+/// </summary>
+internal static class EntityRevisions
+{
+    private const string Key = "_revisions";
+    private static readonly string[] Collections = ["listings", "candidates", "applications", "hire_profiles", "integration_outbox", "notifications", "profile_imports", "documents", "desktop_profiles"];
+
+    internal sealed record Change(IReadOnlyList<string> Existing, IReadOnlyList<string> Created);
+
+    internal static Dictionary<string, JsonNode> Rows(JsonObject data)
+    {
+        var rows = new Dictionary<string, JsonNode>(StringComparer.Ordinal);
+        foreach (var collection in Collections)
+            if (data[collection] is JsonArray array)
+                foreach (var row in array.OfType<JsonObject>())
+                    if (row["id"] is JsonValue id && id.TryGetValue<string>(out var text)) rows.TryAdd(collection + "/" + text, row.DeepClone());
+        return rows;
+    }
+
+    internal static Change Touched(Dictionary<string, JsonNode> before, JsonObject after)
+    {
+        var current = Rows(after);
+        var existing = before.Where(row => !current.TryGetValue(row.Key, out var now) || !JsonNode.DeepEquals(row.Value, now)).Select(row => row.Key).ToList();
+        return new Change(existing, current.Keys.Where(key => !before.ContainsKey(key)).ToList());
+    }
+
+    internal static bool UnchangedSince(JsonObject data, Change change, long revision) =>
+        change.Created.Count == 0 && change.Existing.All(key =>
+            data[Key] is JsonObject stamps && stamps[key] is JsonValue value && value.TryGetValue<long>(out var at) && at <= revision);
+
+    internal static void Stamp(JsonObject data, Change change, long revision)
+    {
+        if (data[Key] is not JsonObject stamps) data[Key] = stamps = new JsonObject();
+        foreach (var key in change.Existing.Concat(change.Created)) stamps[key] = revision;
+        var current = Rows(data);
+        foreach (var removed in change.Existing.Where(key => !current.ContainsKey(key))) stamps.Remove(removed);
+    }
+
+    /// <summary>For writers that do not stamp: the record falls back to the global revision.</summary>
+    internal static void Invalidate(JsonObject data, string collection, string id) => (data[Key] as JsonObject)?.Remove(collection + "/" + id);
+}
+
+/// <summary>
+/// Receipts only let a retry of an uncertain write resolve to the original commit; the renderer
+/// forgets its pending operations when it closes. Unbounded, they grew state.json on every write
+/// and were all sent back in every response, so only the most recent ones are kept.
+/// </summary>
+internal static class Receipts
+{
+    internal const int Max = 2000;
+
+    internal static void Trim(JsonObject data)
+    {
+        if (data["_operations"] is not JsonObject receipts || receipts.Count <= Max) return;
+        var results = data["_documentResults"] as JsonObject;
+        foreach (var oldest in receipts.Take(receipts.Count - Max).Select(receipt => receipt.Key).ToArray())
+        {
+            receipts.Remove(oldest);
+            results?.Remove(oldest);
+        }
+    }
 }

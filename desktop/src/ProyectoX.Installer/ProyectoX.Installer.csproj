@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ProyectoX.Installer</AssemblyName>
+    <StartupObject>ProyectoX.Installer.InstallerApp</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ProyectoX.Installer.Core/ProyectoX.Installer.Core.csproj" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <EmbeddedResource Include="../../artifacts/installer-payload.zip" Condition="Exists('../../artifacts/installer-payload.zip')">
+      <LogicalName>ProyectoX.Installer.Payload.zip</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <Target Name="RequirePayload" BeforeTargets="PrepareForPublish" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Error Condition="!Exists('$(MSBuildProjectDirectory)/../../artifacts/installer-payload.zip')" Text="Genere el paquete mediante desktop/tools/build.ps1 -Installer antes de compilar el instalador." />
+  </Target>
+</Project>

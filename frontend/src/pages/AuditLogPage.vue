@@ -80,10 +80,10 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useAuditStore } from '../stores/audit.js'
 import { t } from '../lib/i18n.js'
-import { api } from '../lib/api.js'
+import { apiAllPages } from '../lib/api.js'
 import { isDesktopMode } from '../lib/storage.js'
 
 const auditStore = useAuditStore()
@@ -104,12 +104,10 @@ onMounted(async () => {
   loading.value = true
   apiError.value = false
   try {
-    const res = await api('/enterprise/audit-log')
-    const raw = Array.isArray(res) ? res : res?.items
-    if (!Array.isArray(raw)) throw new Error('Respuesta de auditoría inválida')
+    const raw = await apiAllPages('/enterprise/audit-log')
     serverEntries.value = raw.map((e) => ({
       id: e.id || e.audit_id || `${Date.now()}_${Math.random()}`,
-      timestamp: e.timestamp || e.created_at || e.createdAt || new Date().toISOString(),
+      timestamp: e.timestamp || e.at || e.created_at || e.createdAt || new Date().toISOString(),
       user: e.user || e.email || e.actor || t('audit.system'),
       action: e.action || e.event || 'acción',
       icon: e.icon,
@@ -140,7 +138,11 @@ const uniqueActions = computed(() => {
 const filtered = computed(() => {
   let list = allEntries.value
   if (actionFilter.value) list = list.filter((e) => e.action === actionFilter.value)
-  if (dateFrom.value) list = list.filter((e) => new Date(e.timestamp) >= new Date(dateFrom.value))
+  if (dateFrom.value) {
+    // Local midnight, like dateTo; a bare YYYY-MM-DD would parse as UTC midnight.
+    const from = new Date(dateFrom.value + 'T00:00:00')
+    list = list.filter((e) => new Date(e.timestamp) >= from)
+  }
   if (dateTo.value) {
     const to = new Date(dateTo.value + 'T23:59:59')
     list = list.filter((e) => new Date(e.timestamp) <= to)
@@ -149,6 +151,9 @@ const filtered = computed(() => {
 })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize)))
+
+// A narrower filter can leave the current page past the end, where the pager is hidden.
+watch([actionFilter, dateFrom, dateTo], () => { page.value = 1 })
 
 const paged = computed(() => {
   const start = (page.value - 1) * pageSize

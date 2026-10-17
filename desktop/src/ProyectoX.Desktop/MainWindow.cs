@@ -20,6 +20,10 @@ internal sealed class MainWindow : Window
     private readonly WebView2 browser = new();
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim requests = new(1, 1);
+    // Native actions wait on the user (save dialog, confirmation). They are serialized among
+    // themselves but hold `requests` only while reading the store, so autosaves and polling
+    // keep flowing instead of timing out behind an open dialog.
+    private readonly SemaphoreSlim nativeActions = new(1, 1);
     private readonly Dictionary<string, string> resources;
     private DesktopBridge? bridge;
         private readonly List<string> openedDocumentDirectories = [];
@@ -172,17 +176,19 @@ internal sealed class MainWindow : Window
     private async void ReceiveMessageAsync(object? sender, CoreWebView2WebMessageReceivedEventArgs args)
     {
         if (!IsTrustedSource(args.Source) || bridge is null || closed) return;
-        var acquired = false;
+        SemaphoreSlim? held = null;
         try
         {
             // Capture the trusted source and message before awaiting; ignore string/non-JSON protocols.
             var message = args.WebMessageAsJson;
-            await requests.WaitAsync(lifetime.Token);
-            acquired = true;
             var currentBridge = bridge;
             var request = message.Length <= 1_048_576 ? JsonNode.Parse(message) as JsonObject : null;
             var operation = request?["operation"]?.GetValue<string>();
-            var response = operation is "documentAction" or "openMail" or "closeApplication"
+            var native = operation is "documentAction" or "openMail" or "closeApplication";
+            var gate = native ? nativeActions : requests;
+            await gate.WaitAsync(lifetime.Token);
+            held = gate;
+            var response = native
                 ? await HandleNativeAsync(request!, currentBridge)
                 : await Task.Run(() => currentBridge.HandleAsync(message, lifetime.Token), lifetime.Token);
             if (!closed && browser.CoreWebView2 is { } core && IsTrustedSource(core.Source))
@@ -195,7 +201,7 @@ internal sealed class MainWindow : Window
         }
         finally
         {
-            if (acquired) requests.Release();
+            held?.Release();
         }
     }
 
@@ -231,7 +237,10 @@ internal sealed class MainWindow : Window
                     var path = payload["path"]?.GetValue<string>() ?? "";
                     var action = payload["action"]?.GetValue<string>();
                     if (action is not ("open" or "save")) throw new LegacyApiException("invalid_request", "Acción de documento inválida.");
-                    var document = await Task.Run(() => currentBridge.Documents.PrepareExportAsync(path, lifetime.Token), lifetime.Token);
+                    PreparedDocument document;
+                    await requests.WaitAsync(lifetime.Token);
+                    try { document = await Task.Run(() => currentBridge.Documents.PrepareExportAsync(path, lifetime.Token), lifetime.Token); }
+                    finally { requests.Release(); }
                     if (closed) throw new OperationCanceledException();
                     var fileName = Path.GetFileName(document.FileName);
                     if (string.IsNullOrWhiteSpace(fileName) || fileName != document.FileName || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
@@ -245,7 +254,7 @@ internal sealed class MainWindow : Window
                     }
                     else
                     {
-                        if (Path.GetExtension(fileName).ToLowerInvariant() is not (".pdf" or ".doc" or ".docx"))
+                        if (!DocumentApi.CanOpenNatively(fileName))
                             throw new LegacyApiException("unsupported_operation", "Este formato solo se puede guardar, no abrir desde la aplicación.");
                         if (MessageBox.Show(this, "El documento se copiará temporalmente a este equipo y se abrirá con el visor de Windows. ¿Continuar?", "Abrir documento", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
                             return DesktopBridge.Success(id, new JsonObject { ["cancelled"] = true });

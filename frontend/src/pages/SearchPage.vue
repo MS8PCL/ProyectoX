@@ -59,7 +59,9 @@
                 <span v-for="t in (l.tags || []).slice(0, 3)" :key="t" class="badge badge-info text-xs">{{ t }}</span>
               </div>
             </div>
+            <!-- Favourites belong to the candidate portal; for staff the toggle did nothing. -->
             <button
+              v-if="app.role === 'candidato'"
               class="btn btn-icon btn-ghost"
               @click.stop="app.toggleFavorite(l.id)"
               :style="{ color: app.favorites.has(l.id) ? '#f59e0b' : '' }"
@@ -93,7 +95,7 @@
     </div>
 
     <!-- Favorites -->
-    <div class="card card-glass">
+    <div v-if="app.role === 'candidato'" class="card card-glass">
       <div class="row items-center justify-between">
         <div>
           <h3 class="font-semibold">{{ t('search.favorites') }}</h3>

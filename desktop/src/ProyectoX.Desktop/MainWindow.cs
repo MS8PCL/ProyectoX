@@ -254,7 +254,7 @@ internal sealed class MainWindow : Window
                     }
                     else
                     {
-                        if (Path.GetExtension(fileName).ToLowerInvariant() is not (".pdf" or ".doc" or ".docx"))
+                        if (!DocumentApi.CanOpenNatively(fileName))
                             throw new LegacyApiException("unsupported_operation", "Este formato solo se puede guardar, no abrir desde la aplicación.");
                         if (MessageBox.Show(this, "El documento se copiará temporalmente a este equipo y se abrirá con el visor de Windows. ¿Continuar?", "Abrir documento", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
                             return DesktopBridge.Success(id, new JsonObject { ["cancelled"] = true });

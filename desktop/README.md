@@ -11,7 +11,7 @@ El EXE usa **`frontend/` original**, con su diseño, componentes, navegación, t
 - `LegacyApi` adapta los contratos existentes a JSON compartido: ofertas, perfiles, candidaturas/etapas/notas, catálogos, métricas, altas IT, outbox manual, auditoría, notificaciones y preferencias por identidad.
 - Si el almacén no tiene departamentos ni puestos (instalación nueva sin migración), el host sirve los catálogos oficiales de `backend/src/seeds`, embebidos tal cual, y los guarda en la primera escritura. Nunca sustituye un catálogo existente.
 - Las preferencias propias (`/state`, `/settings`) no fallan porque otro usuario haya guardado algo; solo entran en conflicto con un guardado más reciente del mismo usuario.
-- `DocumentApi` admite CV/certificados, importación interna, lectura nativa y ZIP. Uploads por chunks de 256 KiB, con SHA256; 50 MiB por archivo y 64 MiB por formulario.
+- `DocumentApi` admite candidatos manuales con todos los campos opcionales, CV/certificados y adjuntos de cualquier formato, lectura nativa controlada y ZIP. Desde la oferta, **Añadir candidato** abre el formulario de esa oferta. Los nuevos archivos quedan en `Candidaturas/Puesto -- id/Candidato -- id/Ficheros de interes/` dentro de la raíz configurada, local o UNC; los antiguos no se mueven. Véase [IMPORTACION_CANDIDATOS.md](IMPORTACION_CANDIDATOS.md). Uploads por chunks de 256 KiB, con SHA256; 50 MiB por archivo y 64 MiB por formulario.
 - El worker PDF.js se empaqueta con la versión instalada; no requiere un CDN.
 - Se conservan colores y layout; se completaron textos faltantes que mostraban claves como `onboarding.welcome`.
 

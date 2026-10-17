@@ -9,6 +9,7 @@ var root = Path.Combine(Path.GetTempPath(), "px-doc-tests-" + Guid.NewGuid().ToS
 Directory.CreateDirectory(root);
 try
 {
+    await OptionalCandidateTests.RunAsync(root);
     var store = new SharedStore(root);
     var staff = new DesktopIdentity("windows-staff", "staff@example.test", "rrhh", "Staff");
     var api = new DocumentApi(store, root, false, staff);
@@ -105,7 +106,7 @@ try
         await quotaHost.HandleUploadAsync("uploadBegin", new JsonObject { ["fileName"] = "quota.pdf", ["mime"] = "application/pdf", ["size"] = DocumentApi.MaxFileBytes }, default);
         await Reject(() => quotaHost.HandleUploadAsync("uploadBegin", new JsonObject { ["fileName"] = "quota2.pdf", ["mime"] = "application/pdf", ["size"] = 15 * 1024 * 1024 }, default), "invalid_request");
         var beforeInvalid = await store.ReadAsync();
-        var badBody = (JsonObject)body.DeepClone(); badBody["parts"]!.AsArray().RemoveAt(0);
+        var badBody = (JsonObject)body.DeepClone(); badBody["parts"]![0]!["value"] = new string('x', 81);
         await Reject(() => api.HandleAsync(Request("/interno/listings/listing/import_candidate", badBody, beforeInvalid.Revision), default), "invalid_request");
         Check((await store.ReadAsync()).Revision == beforeInvalid.Revision, "validation never publishes partial references");
         var unborn = new JsonObject { ["parts"] = new JsonArray(Field("firstName", "Futura"), Field("lastName", "Persona"), Field("email", "futura@example.test"),
@@ -145,7 +146,7 @@ try
             await store.CommitAsync(oversize.Revision, zipBefore.Data, "restore-test-fixture");
             await Reject(() => api.HandleAsync(new JsonObject { ["path"] = "/profile/imports", ["body"] = "{" }, default), "invalid_request");
             await TestReparseAsync(root, store, staff, docPath);
-            var diskPath = Path.Combine(root, "documents", after.Data["documents"]![0]!["id"]!.GetValue<string>() + ".bin");
+            var diskPath = Path.Combine(root, after.Data["documents"]![0]!["relativePath"]!.GetValue<string>().Replace('/', Path.DirectorySeparatorChar));
     await File.WriteAllBytesAsync(diskPath, Encoding.UTF8.GetBytes("tampered"));
     await Reject(() => api.PrepareExportAsync(docPath, default), "store_unavailable");
     var missingRoot = Path.Combine(root, "does-not-exist");
@@ -170,7 +171,7 @@ static async Task TestReparseAsync(string root, SharedStore store, DesktopIdenti
     var safe = Path.Combine(root, "reparse-fixture");
     var target = Path.Combine(root, "reparse-target");
     Directory.CreateDirectory(safe); Directory.CreateDirectory(target);
-    var link = Path.Combine(safe, "documents");
+    var link = Path.Combine(safe, "Candidaturas");
     if (OperatingSystem.IsWindows())
     {
         var start = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"")

@@ -399,12 +399,12 @@
 
     <!-- Import modal -->
     <ModalShell v-if="importModal.open" @close="closeImportModal">
-      <template #title>{{ t('pipeline.importTitle') }}</template>
+      <template #title>{{ isDesktop() ? t('pipeline.importOptionalTitle') : t('pipeline.importTitle') }}</template>
       <div class="stack gap-8">
         <div class="card">
           <div class="font-bold">{{ t('pipeline.importPreviewTitle') }}</div>
           <p class="muted text-sm mt-4">
-            {{ t('pipeline.importDesc') }}
+            {{ isDesktop() ? t('pipeline.importOptionalDesc') : t('pipeline.importDesc') }}
           </p>
         </div>
 
@@ -417,7 +417,7 @@
             <label class="btn btn-ghost btn-sm cursor-pointer">
               <Upload :size="14" />
               {{ t('pipeline.uploadCvs') }}
-              <input class="sr-only" type="file" multiple accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @change="onPickImportCvs" />
+              <input class="sr-only" type="file" multiple :accept="isDesktop() ? undefined : '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'" @change="onPickImportCvs" />
             </label>
             <button class="btn btn-ghost btn-sm" type="button" @click="toImportPreview" :disabled="!importModal.rows.length">Preview</button>
           </div>
@@ -431,35 +431,34 @@
               <div class="grid-2 mt-8">
                 <div class="stack gap-4">
                   <label class="muted text-sm font-semibold">{{ t('pipeline.fieldFirstName') }}</label>
-                  <input class="input" v-model="r.firstName" maxlength="80" required />
+                  <input class="input" v-model="r.firstName" maxlength="80" />
                 </div>
                 <div class="stack gap-4">
                   <label class="muted text-sm font-semibold">{{ t('pipeline.fieldLastName') }}</label>
-                  <input class="input" v-model="r.lastName" maxlength="120" required />
+                  <input class="input" v-model="r.lastName" maxlength="120" />
                 </div>
                 <div class="stack gap-4">
                   <label class="muted text-sm font-semibold">{{ t('pipeline.fieldEmail') }}</label>
-                  <input class="input" type="email" v-model="r.email" maxlength="120" required />
+                  <input class="input" type="email" v-model="r.email" maxlength="120" />
                 </div>
                 <div class="stack gap-4">
                   <label class="muted text-sm font-semibold">{{ t('pipeline.fieldBirthDate') }}</label>
-                  <input class="input" type="date" v-model="r.birthDate" required />
+                  <input class="input" type="date" v-model="r.birthDate" />
                 </div>
               </div>
               <div class="stack gap-4 mt-8">
                 <label class="muted text-sm font-semibold">{{ t('pipeline.fieldCoverLetter') }}</label>
-                <textarea class="textarea" rows="3" v-model="r.coverLetter" maxlength="5000" required />
+                <textarea class="textarea" rows="3" v-model="r.coverLetter" maxlength="5000" />
               </div>
               <div class="grid-2 mt-8">
                 <div class="stack gap-4">
-                  <label class="muted text-sm font-semibold">{{ t('pipeline.cvRequired') }}</label>
+                  <label class="muted text-sm font-semibold">{{ isDesktop() ? t('pipeline.cvOptional') : t('pipeline.cvRequired') }}</label>
                   <input
                     class="input"
                     type="file"
                     :data-import="`cv-${idx}`"
-                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    :accept="isDesktop() ? undefined : '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'"
                     @change="(e)=>onPickImportCv(idx,e)"
-                    required
                   />
                   <div class="row gap-8 flex-wrap mt-4">
                     <button class="btn btn-ghost btn-sm" type="button" @click="attachDemoPdfAsCv(idx)">{{ t('pipeline.useDemoCv') }}</button>
@@ -474,7 +473,7 @@
                     type="file"
                     multiple
                     :data-import="`certs-${idx}`"
-                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    :accept="isDesktop() ? undefined : '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'"
                     @change="(e)=>onPickImportCerts(idx,e)"
                   />
                   <div class="row gap-8 flex-wrap mt-4">
@@ -482,6 +481,11 @@
                   </div>
                   <div class="muted text-sm mt-4">{{ (r.certs||[]).length ? r.certs.map(f=>f.name).join(', ') : '—' }}</div>
                 </div>
+              </div>
+              <div v-if="isDesktop()" class="stack gap-4 mt-8">
+                <label class="muted text-sm font-semibold">{{ t('pipeline.attachmentsOptional') }}</label>
+                <input class="input" type="file" multiple :data-import="`attachments-${idx}`" @change="(e)=>onPickImportAttachments(idx,e)" />
+                <div class="muted text-sm mt-4">{{ r.attachments.map(f=>f.name).join(', ') || '—' }}</div>
               </div>
             </div>
           </div>
@@ -495,14 +499,15 @@
           </div>
           <div class="stack gap-8">
             <div v-for="(p,idx) in importPreview" :key="idx" class="card" style="background: var(--color-surface-hover)">
-              <div class="font-bold">#{{ idx+1 }} — {{ p.firstName || '—' }} {{ p.lastName || '' }}</div>
+              <div class="font-bold">#{{ idx+1 }} — {{ p.name }}</div>
               <div class="muted text-sm mt-4">{{ p.email || '—' }} · {{ t('pipeline.fieldBirthDate') }}: {{ p.birthDate || '—' }}</div>
               <div class="muted text-sm mt-4">CV: {{ p.cvName || '—' }} · {{ t('pipeline.certsOptional') }}: {{ p.certCount }}</div>
+              <div v-if="isDesktop()" class="muted text-sm mt-4">{{ t('pipeline.attachmentsOptional') }}: {{ p.attachmentNames || '—' }}</div>
               <div v-if="p.error" class="text-sm mt-4" style="color: var(--color-danger)">{{ p.error }}</div>
             </div>
           </div>
           <div class="row gap-8 flex-wrap">
-            <button class="btn btn-ghost" type="button" @click="importModal.step='edit'" :disabled="importModal.loading">{{ t('pipeline.back') }}</button>
+            <button class="btn btn-ghost" type="button" @click="toImportEdit" :disabled="importModal.loading">{{ t('pipeline.back') }}</button>
             <button class="btn btn-primary" type="button" @click="runImport" :disabled="importModal.loading || importPreviewHasErrors || importAllDone">
               {{ importModal.loading ? t('pipeline.importing') : t('pipeline.importDefinitive') }}
             </button>
@@ -623,6 +628,7 @@ import { useAuthStore } from '../stores/auth.js'
 import { useAppStore } from '../stores/app.js'
 import { isPipelineListing } from '../lib/listingKinds.js'
 import { candidateDisplayName } from '../lib/candidateName.js'
+import { validateCandidateImportRow, buildCandidateImportForm } from '../lib/candidateImport.js'
 import ModalShell from '../components/ModalShell.vue'
 import ComboBox from '../components/ComboBox.vue'
 import { ChevronDown, ChevronUp, Trash2, Upload, Download, Plus, X, GripVertical, Mail, Filter } from 'lucide-vue-next'
@@ -920,57 +926,24 @@ const importModal = reactive({
   results: [],
 })
 
-const importPreview = computed(() => {
-  return (importModal.rows || []).map((r) => {
-    const firstName = String(r.firstName || '').trim()
-    const lastName = String(r.lastName || '').trim()
-    const email = String(r.email || '').trim()
-    const birthDate = String(r.birthDate || '').trim()
-    const coverLetter = String(r.coverLetter || '').trim()
-    const cv = r.cv || null
-    const certs = Array.isArray(r.certs) ? r.certs : []
-    let error = ''
-    const allowed = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    ]
-    for (const f of certs) {
-      if (f && typeof f.size === 'number' && f.size > 50 * 1024 * 1024) error = error || 'Certificado supera 50MB'
-      if (f && f.type && !allowed.includes(String(f.type))) error = error || 'Certificado: tipo no permitido'
-    }
-
-    if (!firstName) error = error || 'Falta el nombre'
-    if (!lastName) error = error || 'Faltan los apellidos'
-    if (!email) error = error || 'Falta el email'
-    if (!birthDate) error = error || 'Falta la fecha de nacimiento'
-    if (!coverLetter) error = error || 'Falta la carta de presentación'
-    if (!cv) error = error || 'Falta CV'
-    if (cv && typeof cv.size === 'number' && cv.size > 50 * 1024 * 1024) error = error || 'CV supera 50MB'
-    if (cv && cv.type && ![
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    ].includes(String(cv.type))) error = error || 'CV: tipo no permitido'
-
-    return {
-      firstName,
-      lastName,
-      email,
-      birthDate,
-      coverLetter,
-      cvName: cv?.name || '',
-      certCount: certs.length,
-      error,
-    }
-  })
-})
+const importPreview = computed(() => importModal.rows.map((row) => {
+  const validated = validateCandidateImportRow(row, new Date(), !isDesktop())
+  return {
+    ...validated,
+    name: [validated.firstName, validated.lastName].filter(Boolean).join(' ') || t('pipeline.unnamedCandidate'),
+    cvName: validated.cv?.name || '',
+    certCount: validated.certs.length,
+    attachmentNames: validated.attachments.map((file) => file.name).join(', '),
+    error: validated.errorCode ? t(validated.errorCode) : '',
+  }
+}))
 
 const importPreviewHasErrors = computed(() => importPreview.value.some((p) => !!p.error))
 // Imported rows are never sent again: a second click would attach another copy of the CV.
 const importAllDone = computed(() => importModal.rows.length > 0 && importModal.rows.every((r) => r.imported))
 
 function openImportModal(listingId) {
+  if (importModal.loading) return
   importModal.open = true
   importModal.step = 'edit'
   importModal.listingId = String(listingId || '')
@@ -982,6 +955,7 @@ function openImportModal(listingId) {
 }
 
 function closeImportModal() {
+  if (importModal.loading) return
   importModal.open = false
   importModal.step = 'edit'
   importModal.listingId = ''
@@ -992,7 +966,7 @@ function closeImportModal() {
 }
 
 function addImportRow(prefill = {}) {
-  if (importModal.rows.length >= 10) return
+  if (importModal.loading || importModal.rows.length >= 10) return
   importModal.rows.push({
     firstName: prefill.firstName || '',
     lastName: prefill.lastName || '',
@@ -1001,10 +975,12 @@ function addImportRow(prefill = {}) {
     coverLetter: prefill.coverLetter || '',
     cv: prefill.cv || null,
     certs: prefill.certs || [],
+    attachments: prefill.attachments || [],
   })
 }
 
 function removeImportRow(idx) {
+  if (importModal.loading) return
   importModal.rows.splice(idx, 1)
 }
 
@@ -1019,6 +995,7 @@ function parseNameFromFilename(name) {
 }
 
 function onPickImportCvs(ev) {
+  if (importModal.loading) return
   const files = Array.from(ev?.target?.files || [])
   ev.target.value = ''
   for (const f of files) {
@@ -1028,12 +1005,13 @@ function onPickImportCvs(ev) {
       firstName: parsed.firstName,
       lastName: parsed.lastName,
       cv: f,
-      coverLetter: 'Import interno (FASE 5).',
+      coverLetter: '',
     })
   }
 }
 
 function onPickImportCv(idx, ev) {
+  if (importModal.loading) return
   const f = ev?.target?.files?.[0] || null
   importModal.rows[idx].cv = f
   if (f?.name) {
@@ -1044,11 +1022,23 @@ function onPickImportCv(idx, ev) {
 }
 
 function onPickImportCerts(idx, ev) {
+  if (importModal.loading) return
   const list = Array.from(ev?.target?.files || [])
   importModal.rows[idx].certs = list
 }
 
+function onPickImportAttachments(idx, ev) {
+  if (importModal.loading) return
+  importModal.rows[idx].attachments = Array.from(ev?.target?.files || [])
+}
+
+function toImportEdit() {
+  if (importModal.loading) return
+  importModal.step = 'edit'
+}
+
 function toImportPreview() {
+  if (importModal.loading) return
   importModal.error = ''
   importModal.step = 'preview'
 }
@@ -1060,9 +1050,12 @@ async function fetchDemoPdfBlob() {
 }
 
 async function attachDemoPdfAsCv(idx, filename) {
+  if (importModal.loading) return
+  const row = importModal.rows[idx]
   importModal.error = ''
   try {
     const blob = await fetchDemoPdfBlob()
+    if (importModal.loading || importModal.rows[idx] !== row) return
     const name = String(filename || 'demo-cv.pdf')
     const file = new File([blob], name, { type: 'application/pdf' })
     importModal.rows[idx].cv = file
@@ -1075,9 +1068,12 @@ async function attachDemoPdfAsCv(idx, filename) {
 }
 
 async function attachDemoPdfAsCert(idx, filename) {
+  if (importModal.loading) return
+  const row = importModal.rows[idx]
   importModal.error = ''
   try {
     const blob = await fetchDemoPdfBlob()
+    if (importModal.loading || importModal.rows[idx] !== row) return
     const name = String(filename || 'certificado-demo.pdf')
     const file = new File([blob], name, { type: 'application/pdf' })
     const list = Array.isArray(importModal.rows[idx].certs) ? importModal.rows[idx].certs : []
@@ -1087,42 +1083,27 @@ async function attachDemoPdfAsCert(idx, filename) {
   }
 }
 
-function safeCvFilename(r) {
-  const fn = String(r.firstName || '').trim().replace(/\s+/g, '+')
-  const ln = String(r.lastName || '').trim().replace(/\s+/g, '+')
-  const orig = String(r.cv?.name || 'cv.pdf')
-  const ext = orig.includes('.') ? orig.split('.').pop() : 'pdf'
-  const base = `${fn}+${ln}`.replace(/[^a-zA-Z0-9+_-]+/g, '+')
-  return `${base}.${ext}`
-}
 
 async function runImport() {
+  if (importModal.loading || importAllDone.value) return
   importModal.error = ''
   importModal.results = []
-  if (importPreviewHasErrors.value) return (importModal.error = 'Hay errores en el preview.')
-  if (!importModal.listingId) return (importModal.error = 'Falta listingId.')
+  if (importPreviewHasErrors.value) return (importModal.error = t('pipeline.importPreviewErrors'))
+  if (!importModal.listingId) return (importModal.error = t('pipeline.importMissingListing'))
 
   importModal.loading = true
   try {
     for (const r of importModal.rows) {
       if (r.imported) continue
-      const fd = new FormData()
-      fd.set('firstName', String(r.firstName || '').trim())
-      fd.set('lastName', String(r.lastName || '').trim())
-      fd.set('email', String(r.email || '').trim())
-      fd.set('birthDate', String(r.birthDate || '').trim())
-      fd.set('coverLetter', String(r.coverLetter || '').trim())
-      const cvName = safeCvFilename(r)
-      fd.set('cv', r.cv, cvName)
-      for (const f of r.certs || []) fd.append('certificates', f)
+      const fd = buildCandidateImportForm(r)
       const res = await apiForm(`/interno/listings/${encodeURIComponent(importModal.listingId)}/import_candidate`, fd)
       r.imported = true
-      importModal.results.push({ ok: true, inputEmail: r.email, name: `${r.firstName} ${r.lastName}`.trim(), res })
+      importModal.results.push({ ok: true, inputEmail: r.email, name: `${r.firstName} ${r.lastName}`.trim() || t('pipeline.unnamedCandidate'), res })
       console.log('[import_candidate] ok', { inputEmail: r.email, res })
     }
     importModal.step = 'preview'
   } catch (e) {
-    importModal.error = String(e?.message || e)
+    importModal.error = e?.code?.startsWith('pipeline.') ? t(e.code) : String(e?.message || e)
     importModal.results.push({ ok: false, error: importModal.error })
     console.log('[import_candidate] error', importModal.error)
   } finally {
@@ -1195,6 +1176,26 @@ function pickInitialOpen() {
   if (exists) return qid
   return companyListings.value[0]?.id || ''
 }
+
+// Consume each query request only after its listing resolves. Polling never reopens it.
+let importQueryKey = ''
+let importQueryConsumed = false
+watch(
+  () => [route.query?.listingId, route.query?.import, companyListings.value, importModal.loading],
+  () => {
+    const qid = typeof route.query?.listingId === 'string' ? route.query.listingId : ''
+    const key = route.query?.import === '1' && qid ? qid : ''
+    if (key !== importQueryKey) {
+      importQueryKey = key
+      importQueryConsumed = false
+    }
+    if (!key || importQueryConsumed || importModal.loading || !companyListings.value.some((listing) => listing.id === qid)) return
+    importQueryConsumed = true
+    openListingId.value = qid
+    openImportModal(qid)
+  },
+  { immediate: true }
+)
 
 watch(
   () => [companyListings.value.length, route.query?.listingId],

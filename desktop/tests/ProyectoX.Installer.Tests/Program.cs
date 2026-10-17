@@ -334,7 +334,7 @@ internal static class Program
         foreach (var reserved in new[]
         {
             "config.json", "state.json", "state.backup.json", "commit.pending", ".write.lock",
-            "runtime-data", "documents", "pocketbase-storage"
+            "runtime-data", "documents", "pocketbase-storage", "Candidaturas"
         })
         {
             foreach (var name in new[]

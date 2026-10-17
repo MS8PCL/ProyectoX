@@ -68,7 +68,10 @@
           <div style="font-weight: 650">Proceso de Selección</div>
           <div class="muted" style="font-size: 12px">Gestiona aplicantes y mueve etapas dentro del anuncio.</div>
         </div>
-        <RouterLink class="btn" :to="`/proceso-server?listingId=${encodeURIComponent(l.id)}`">Abrir</RouterLink>
+        <div class="row" style="gap: 8px">
+          <RouterLink class="btn primary" :to="{ path: '/proceso-server', query: { listingId: l.id, import: '1' } }" @click="emit('close')">{{ t('pipeline.addCandidate') }}</RouterLink>
+          <RouterLink class="btn" :to="`/proceso-server?listingId=${encodeURIComponent(l.id)}`">Abrir</RouterLink>
+        </div>
       </div>
     </div>
   </div>

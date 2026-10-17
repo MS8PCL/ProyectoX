@@ -15,7 +15,7 @@ public sealed class InstallerEngine
     private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "config.json", "state.json", "state.backup.json", "commit.pending", ".write.lock",
-        "runtime-data", "documents", "pocketbase-storage"
+        "runtime-data", "documents", "pocketbase-storage", "Candidaturas"
     };
     private readonly Func<string, bool> networkDirectoryExists;
     private readonly Func<string, bool> hasReparseAncestor;
